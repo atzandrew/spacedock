@@ -7,7 +7,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: dnf install -y gcc-c++ cmake make git python3 qt6-qtbase-devel qt6-qtdeclarative-devel kf6-kconfig-devel plasma-workspace layer-shell-qt
+        run: >-
+          dnf install -y gcc-c++ cmake make git python3
+          qt6-qtbase-devel qt6-qtdeclarative-devel
+          kf6-kconfig-devel kf6-kcoreaddons-devel kf6-kservice-devel
+          kf6-kwidgetsaddons-devel plasma-workspace layer-shell-qt
       - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - run: cmake --build build --parallel 2
       - run: ctest --test-dir build --output-on-failure

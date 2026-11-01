@@ -27,6 +27,8 @@
 #include <QCryptographicHash>
 #include <QImageReader>
 #include <QSaveFile>
+#include <QRegularExpression>
+#include <QSortFilterProxyModel>
 #include <QtMath>
 #include <algorithm>
 
@@ -88,6 +90,15 @@ TaskManager.TasksModel {
         return;
     }
     tasks->setParent(this);
+    // Filter at the task model so all row-based actions keep using its own
+    // indices, including when SpaceDock itself has been pinned.
+    auto *filteredTasks = qobject_cast<QSortFilterProxyModel *>(tasks);
+    const int appIdRole = tasks->roleNames().key("AppId", -1);
+    if (filteredTasks && appIdRole >= 0) {
+        filteredTasks->setFilterRole(appIdRole);
+        filteredTasks->setFilterRegularExpression(QRegularExpression(
+            QStringLiteral("^(?!spacedock(?:\\.desktop)?$)"), QRegularExpression::CaseInsensitiveOption));
+    }
     // Only seed installed launchers; saved user pins continue to take precedence.
     QStringList defaultPins;
     const QStringList desktopIds {

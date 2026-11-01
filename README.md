@@ -14,7 +14,7 @@ This tool is in beta and **will** have bugs! Please report them.
 
 ![Spacedock's magnification example](assets/images/spacedock_screenshot2.png)
 
-## Current version Beta 0.5 - November 1, 2026
+## Current version Beta 0.5.1 - November 1, 2026
 
 * Initial GitHub upload
 
