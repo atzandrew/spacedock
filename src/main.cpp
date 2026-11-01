@@ -22,6 +22,7 @@
 #include <QEventLoop>
 #include <QScopeGuard>
 #include <KConfigGroup>
+#include <cstdio>
 #include <functional>
 #include <memory>
 
@@ -241,7 +242,19 @@ int main(int argc, char **argv)
         // Also instantiate the production window to catch layer-shell QML errors.
         engine.load(QUrl("qrc:/qml/DockWindow.qml"));
         if (engine.rootObjects().size() != 2) return 1;
-        QTimer::singleShot(500, &app, &QCoreApplication::quit);
+        // Give lifecycle tests a deterministic point at which the dock is
+        // fully visible and the termination handlers are installed.
+        auto *content = engine.rootObjects().first()->findChild<QObject *>("dockContent");
+        auto *readyTimer = new QTimer(&app);
+        readyTimer->setInterval(20);
+        QObject::connect(readyTimer, &QTimer::timeout, &app, [content, readyTimer, &app] {
+            if (!content || content->property("startingUp").toBool()) return;
+            readyTimer->stop();
+            fputs("spacedock smoke test ready\n", stdout);
+            fflush(stdout);
+            QTimer::singleShot(500, &app, &QCoreApplication::quit);
+        });
+        readyTimer->start();
     }
     return app.exec();
 }

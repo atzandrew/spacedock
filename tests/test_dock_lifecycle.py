@@ -1,6 +1,7 @@
 """Exercise graceful quits and termination signals in the real executable."""
 import json
 import os
+import select
 import signal
 import subprocess
 import sys
@@ -16,20 +17,22 @@ with tempfile.TemporaryDirectory() as folder:
     path = Path(folder) / 'tuning.json'
     path.write_text(json.dumps(tuning))
     for termination in (None, signal.SIGINT, signal.SIGTERM):
-        started = time.monotonic()
         process = subprocess.Popen([binary, '--smoke-test', '--tuning', str(path)],
                                    env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
+            ready, _, _ = select.select([process.stdout], [], [], 8)
+            assert ready and process.stdout.readline() == b'spacedock smoke test ready\n', (
+                'dock did not finish startup', process.poll())
+            started = time.monotonic()
             if termination is not None:
-                time.sleep(0.4)
                 process.send_signal(termination)
             output, errors = process.communicate(timeout=8)
             elapsed = time.monotonic() - started
             assert process.returncode == 0, (termination, process.returncode, errors.decode())
             assert b"TypeError: Cannot read property" not in errors, errors.decode()
-            # The smoke test requests quit at 500 ms. Neither it nor a signal
-            # should tear down the window before the 900 ms lowering finishes.
-            assert elapsed >= 1.1, (termination, elapsed, errors.decode())
+            # Neither a quit request nor a signal should tear down the window
+            # before the 900 ms lowering animation has mostly completed.
+            assert elapsed >= 0.75, (termination, elapsed, errors.decode())
         finally:
             if process.poll() is None:
                 process.kill()
