@@ -1,0 +1,318 @@
+{
+  "schemaVersion": 1,
+  "provenance": "Static geometry estimated from the private dock crop. Magnification is a low-confidence visual fit to a private 640x360 web-video excerpt; replace with direct measurements when available. Source display scale and dock preferences are unknown.",
+  "layout": {
+    "iconSize": 48,
+    "spacing": 0,
+    "padding": 16,
+    "surfaceHeight": 224,
+    "shelfHeight": 76,
+    "shelfDepth": 41,
+    "perspectiveInset": 22,
+    "reflectionOpacity": 0.18,
+    "showIndicators": true,
+    "shelfLip": 3,
+    "iconBaselineInset": 16
+  },
+  "measurements": [
+    {
+      "source": "User-supplied private dock crop, 2048x180 pixels",
+      "method": "Visual pixel-coordinate estimates from the unmodified crop; divide lengths by two for the current 48px icon prototype. This is a design normalization, not an assertion of source display scale.",
+      "observations": {
+        "rearEdgeY": 98,
+        "frontEdgeY": 175,
+        "bottomY": 180,
+        "rearLeftX": 88,
+        "frontLeftX": 44,
+        "typicalIconBottomY": 149
+      },
+      "derived": {
+        "shelfDepth": 41,
+        "shelfLip": 3,
+        "perspectiveInset": 22,
+        "iconBaselineInset": 16
+      },
+      "uncertainty": "Approximate (+/- 2 source pixels for shelf edges, several pixels for artwork bounds). Icon artwork has varying intrinsic padding; crop contains no dock preference or DPI metadata.",
+      "notMeasured": [
+        "motion",
+        "magnification",
+        "reflection opacity",
+        "shelf color independent of wallpaper"
+      ]
+    },
+    {
+      "source": "User-supplied private web-video excerpt, 640x360, duration 8.141s",
+      "method": "Decode using presentation timestamps; visually inspect native frames and enlarged nearest-neighbor crops. 195 decoded video frames at nominal 24000/1001 fps; container nb_frames=293 is inconsistent with decoded frames and is not used.",
+      "observations": {
+        "restingArtworkHeightPx": [
+          17,
+          19
+        ],
+        "peakArtworkHeightPx": [
+          29,
+          33
+        ],
+        "affectedNeighborsEachSide": [
+          2,
+          3
+        ],
+        "entryIntervalSeconds": [
+          0.292,
+          0.459
+        ],
+        "exitIntervalSecondsApprox": [
+          5.65,
+          5.9
+        ]
+      },
+      "fit": "Scale samples at distance 0,1,2,3 icon slots: 1.75,1.50,1.20,1.00. Entry progress visually approximated by 0,.2,.6,.85,1 across roughly four frame intervals. Exit shares this provisional fit; its precise trigger/easing cannot be isolated from pointer motion.",
+      "uncertainty": "Low confidence: approximately +/-2 pixels on tiny compressed artwork; at least +/-2 frames (~83ms) on transition estimates. Icon padding varies, cursor is difficult to resolve, recording preferences and playback fidelity are unknown. Neighbor samples and interpolation are an approximation, not an exact reference curve.",
+      "notMeasured": [
+        "sub-frame pointer-follow delay",
+        "exact easing",
+        "120Hz behavior",
+        "preference-slider mapping"
+      ]
+    },
+    {
+      "source": "User comparison against an accessible modern dock",
+      "observations": [
+        "Entry and exit should feel quicker than the initial prototype",
+        "Magnification should stay active across gaps between icons"
+      ],
+      "adjustment": {
+        "enterDurationMs": {
+          "previous": 167,
+          "current": 125
+        },
+        "exitDurationMs": {
+          "previous": 250,
+          "current": 167
+        }
+      },
+      "method": "Provisional subjective adjustment based on user feedback, not a frame measurement. Keep the existing sampled progress curves; revisit with direct reference recordings.",
+      "uncertainty": "Modern comparison system, settings, and exact durations are unspecified; these defaults are a trial fit, not measured Mavericks timing."
+    },
+    {
+      "source": "User tuning preference",
+      "adjustment": {
+        "enterDurationMs": {
+          "previous": 125,
+          "current": 130
+        },
+        "exitDurationMs": {
+          "previous": 167,
+          "current": 130
+        }
+      },
+      "method": "User-requested equal 130 ms entry and exit for evaluation; subjective tuning, not a reference measurement."
+    },
+    {
+      "source": "Provisional interaction prototype authorized for iterative tuning",
+      "method": "Tooltip styling approximates the observed dark single-line labels. Delay 0 means no added wait, not a measured reference delay. Bounce uses an engineering sample arc, not a measured or remembered Dock curve. Height 14px, period 480ms, and launch timeout 10s are trial values.",
+      "notMeasured": [
+        "launch bounce",
+        "attention bounce",
+        "tooltip font metrics",
+        "tooltip delay"
+      ],
+      "limitation": "Plasma task demand-attention state has no informational/critical classification; prototype uses one bounce per attention request and a persistent indicator. Repeat startup bounce until startup clears or pending launch times out."
+    },
+    {
+      "source": "User correction of launch feedback behavior",
+      "observations": [
+        "Launching an app always produces one complete bounce",
+        "Further bounces only while the app is still loading",
+        "Stop repeating when a running or active window appears, even if startup data lags"
+      ],
+      "implementation": "Remove the local pending-launch repeat timer. The click starts one cycle; backend startup state permits additional cycles. Finish the current cycle when startup completes. Bounce geometry and timing remain provisional."
+    },
+    {
+      "source": "User tuning request after live launch tests",
+      "adjustment": {
+        "bounceDurationMs": {
+          "previous": 480,
+          "current": 720
+        }
+      },
+      "method": "Two-thirds of the previous speed means 1.5 times the cycle duration. Preserve the running arc across startup-to-window task replacement; complete the current cycle on readiness."
+    },
+    {
+      "source": "User correction of label appearance",
+      "adjustment": {
+        "fontFamily": "Inter",
+        "fontPixelSize": {
+          "previous": 12,
+          "current": 21
+        },
+        "background": "none",
+        "shadow": "heavy black blur with downward offset"
+      },
+      "method": "User requested text-only labels at 1.5\u20132 times the original prototype size. Chosen size is 1.75 times 12px. Shadow parameters are provisional visual styling, not measured font metrics."
+    },
+    {
+      "source": "User label styling adjustment",
+      "adjustment": {
+        "fontBold": true,
+        "shadowBlur": {
+          "previous": 6,
+          "current": 12
+        }
+      },
+      "method": "Double the shadow blur radius and use matching bold glyphs in the label and shadow. Enlarge label bounds/padding to avoid clipping."
+    },
+    {
+      "source": "User label size tuning",
+      "adjustment": {
+        "fontPixelSize": {
+          "previous": 21,
+          "current": 18
+        }
+      },
+      "method": "User-requested visual comparison; preserve bold weight and shadow settings."
+    },
+    {
+      "source": "User label placement tuning",
+      "adjustment": {
+        "gap": {
+          "previous": 8,
+          "current": 4
+        }
+      },
+      "method": "Interpret bringing the label down by about 50% as halving its gap above the icon."
+    },
+    {
+      "source": "User semibold and closer label tuning",
+      "adjustment": {
+        "fontWeight": 600,
+        "gap": 2
+      },
+      "method": "Anchor the text line bottom rather than the shadow container above the icon. Gap is now measured from the font descent; subjective user tuning, not reference measurement."
+    },
+    {
+      "source": "User label spacing refinement",
+      "adjustment": {
+        "gap": 6
+      },
+      "method": "Add 4px to the previous 2px text-line-to-icon gap after live visual feedback."
+    },
+    {
+      "source": "User label size and spacing refinement",
+      "adjustment": {
+        "fontPointSize": 16,
+        "gap": 9
+      },
+      "method": "Explicit point size requested by user; keep semibold weight and text-line placement."
+    },
+    {
+      "source": "User clarified font units",
+      "adjustment": {
+        "fontPixelSize": 16
+      },
+      "method": "Use 16 pixels rather than 16 points; retain 9px gap and semibold weight."
+    },
+    {
+      "source": "User label shadow refinement",
+      "adjustment": {
+        "shadowBlur": 24,
+        "shadowStrength": 1.5
+      },
+      "method": "Double blur radius and composite an additional half-opacity shadow pass for approximately 50% more density; enlarge shadow bounds and surface headroom."
+    },
+    {
+      "source": "User requested much darker label shadow",
+      "adjustment": {
+        "shadowStrength": 6,
+        "shadowCoreBlur": 6
+      },
+      "method": "Four times the previous broad-shadow pass weight plus two tight-core passes. Alpha compositing saturates, so perceived darkness is judged visually rather than claimed as a linear fourfold change."
+    },
+    {
+      "source": "User shadow tightness refinement",
+      "adjustment": {
+        "shadowBlur": 19.2,
+        "shadowCoreBlur": 4.8
+      },
+      "method": "Reduce both blur radii by 20 percent; retain shadow density, font size and label spacing."
+    },
+    {
+      "source": "User requested smaller shadow source instead of smaller blur",
+      "adjustment": {
+        "shadowBlur": 24,
+        "shadowCoreBlur": 6,
+        "shadowSourceScale": 0.8
+      },
+      "method": "Restore earlier blur radii and scale only the source glyph mask to 80 percent around the text line center. Visible label retains its size and placement."
+    },
+    {
+      "source": "Engineering prototype for auto-hide; no reference measurement available",
+      "method": "User-requested smooth rise and expansion from 80% size, reversed on hide. Provisional 400 ms cubic ease-in/out; not measured reference behavior."
+    }
+  ],
+  "magnification": {
+    "enabled": true,
+    "scaleSamples": [
+      1.75,
+      1.5,
+      1.2,
+      1.0
+    ],
+    "enterDurationMs": 130,
+    "exitDurationMs": 130,
+    "enterProgressSamples": [
+      0.0,
+      0.2,
+      0.6,
+      0.85,
+      1.0
+    ],
+    "exitProgressSamples": [
+      0.0,
+      0.2,
+      0.6,
+      0.85,
+      1.0
+    ]
+  },
+  "tooltip": {
+    "enabled": true,
+    "delayMs": 0,
+    "height": 72,
+    "fontPixelSize": 16,
+    "padding": 28,
+    "margin": 24,
+    "gap": 9,
+    "fontFamily": "Inter",
+    "shadowBlur": 24,
+    "shadowStrength": 6,
+    "shadowCoreBlur": 6,
+    "shadowSourceScale": 0.8,
+    "shadowOffset": 3,
+    "fontWeight": 600
+  },
+  "feedback": {
+    "bounceEnabled": true,
+    "bounceHeight": 14,
+    "bounceDurationMs": 720,
+    "bounceSamples": [
+      0,
+      0.75,
+      1,
+      0.75,
+      0
+    ]
+  },
+  "autoHide": {
+    "enabled": false,
+    "hideDelayMs": 600,
+    "revealDelayMs": 100,
+    "slideDurationMs": 400,
+    "edgeSize": 2,
+    "hiddenScale": 0.8
+  },
+  "motion": {
+    "menuHighlightFadeMs": 100,
+    "partingDurationMs": 234,
+    "dragPartingDelayMs": 1000
+  }
+}

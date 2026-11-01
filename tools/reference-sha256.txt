@@ -1,0 +1,5 @@
+# SHA-256 hashes only, one per line. No reference filenames or content.
+# Populate locally from private recordings/artwork before reference work begins.
+9c6868439a4533bbe6220490d5b873bfd87a5929703eff6dc0198dc6ee520cdf
+b075e5210bb289164aac9fe97c205db03fab1d0dff776c3371ea83e31cbc7e0e
+29e46f3a0493ff6169e7011ed79dfd75f43bbd6579439b1486448c97bcddd468

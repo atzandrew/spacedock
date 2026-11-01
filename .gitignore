@@ -1,0 +1,13 @@
+/build*/
+/__pycache__/
+**/__pycache__/
+*.user
+/reference/
+/comparisons/
+/references/
+/.local-docs/
+
+# Editable artwork and separately maintained icon themes stay local.
+/assets/sources/
+/assets/themeicons/
+/themeicons/

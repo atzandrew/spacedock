@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=spacedock
+Comment=A classic-style dock for Plasma Wayland
+Exec="@SPACEDOCK_EXEC@"
+Icon=preferences-desktop-theme
+Terminal=false
+StartupNotify=false
+Categories=Utility;
+OnlyShowIn=KDE;
+X-KDE-Wayland-Interfaces=org_kde_plasma_window_management,org_kde_plasma_activation_feedback
