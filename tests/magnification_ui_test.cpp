@@ -392,7 +392,9 @@ private slots:
         document.write("[Desktop Entry]\nType=Link\nName=Document\nURL=https://example.com\n");
         document.close();
         QQmlApplicationEngine engine;
-        DockBackend backend(&engine);
+        const auto config = KSharedConfig::openConfig(directory.filePath("dockrc"));
+        KConfigGroup(config, "Launchers").writeEntry("applications", QStringList{});
+        DockBackend backend(&engine, false, nullptr, config);
         QVERIFY(backend.isReady());
         QVERIFY(backend.canPinUrls({url}));
         QVERIFY(!backend.canPinUrls({url, QUrl::fromLocalFile(invalid)}));
@@ -404,7 +406,7 @@ private slots:
         const auto secondUrl = QUrl::fromLocalFile(secondDesktop);
         const auto pins = backend.sourceModel()->property("launcherList").toStringList();
         QCOMPARE(pins.count(url.toString()), 1);
-        QCOMPARE(KConfigGroup(KSharedConfig::openConfig("spacedockrc"), "Launchers")
+        QCOMPARE(KConfigGroup(config, "Launchers")
             .readEntry("applications", QStringList()), pins);
 
         InsertingPinDropModel visiblePins;
@@ -425,7 +427,12 @@ private slots:
         QTRY_VERIFY(!content->property("startingUp").toBool());
         QMimeData mime;
         mime.setUrls({url});
-        const QPoint point(window->width() / 2, window->height() - 30);
+        QTRY_VERIFY(!taskItems(content).isEmpty());
+        auto taskPoint = [&] {
+            auto *task = taskItems(content).first();
+            return task->mapToScene(QPointF(task->width() / 2, task->height() / 2)).toPoint();
+        };
+        const QPoint point = taskPoint();
         QDragEnterEvent enter(point, Qt::CopyAction | Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(window, &enter);
         QVERIFY(enter.isAccepted());
@@ -482,12 +489,16 @@ private slots:
         QCOMPARE(backend.sourceModel()->property("launcherList").toStringList(), pins);
         // Plasma's favorites launcher offers Move only. Plain file-manager
         // moves must remain rejected so a successful pin cannot delete a file.
-        QDragEnterEvent fileMove(point, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        const QPoint fileMovePoint = taskPoint();
+        auto *trash = content->findChild<QQuickItem *>("trashIcon");
+        QVERIFY(trash);
+        QVERIFY(!trash->contains(trash->mapFromScene(fileMovePoint)));
+        QDragEnterEvent fileMove(fileMovePoint, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(window, &fileMove);
         // The surface accepts file drags so they can reach Trash, but a move
         // dropped on the application row must neither pin nor delete the file.
         QVERIFY(fileMove.isAccepted());
-        QDropEvent fileMoveDrop(point, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
+        QDropEvent fileMoveDrop(fileMovePoint, Qt::MoveAction, &mime, Qt::LeftButton, Qt::NoModifier);
         QCoreApplication::sendEvent(window, &fileMoveDrop);
         QVERIFY(!fileMoveDrop.isAccepted());
         QVERIFY(QFile::exists(desktop));
