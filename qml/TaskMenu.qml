@@ -78,7 +78,11 @@ DockMenu {
     }
     DockMenuItem {
         text: taskItem.needsAppImageSetup ? qsTr("Add AppImage to Dock") : taskItem.running ? qsTr("Show") : qsTr("Open")
-        onTriggered: dockBackend.activate(taskItem.index, tuning.bringAllWindows)
+        onTriggered: {
+            const folder = dockBackend.folderPath(taskItem.index)
+            if (folder) dockBackend.openFolderPath(folder)
+            else dockBackend.activate(taskItem.index, tuning.bringAllWindows)
+        }
     }
     DockMenuItem {
         text: qsTr("Choose Running Application…")
@@ -100,7 +104,7 @@ DockMenu {
         }
         DockMenuItem {
             text: qsTr("Edit Application…")
-            shown: taskItem.pinned && !taskItem.needsAppImageSetup
+            shown: taskItem.pinned && !taskItem.needsAppImageSetup && !dockBackend.folderPath(taskItem.index)
             onTriggered: dock.editApplication(taskItem.index)
         }
         DockMenuItem {

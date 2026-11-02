@@ -268,6 +268,7 @@ private slots:
         QCOMPARE(backend.data(backend.index(1, 0), DockBackend::NeedsAppImageSetup).toBool(), true);
         QCOMPARE(backend.data(backend.index(1, 0), DockBackend::Name).toString(), "Add \"Setup Editor\" AppImage to Dock");
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);

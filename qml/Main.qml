@@ -62,7 +62,7 @@ Item {
         taskPressed: root.pressedTask >= 0
         dragging: root.dragging
         externalDrag: appDrop.containsDrag
-        externalCommit: externalDropControl.committing || root.trashConfirmationPending
+        externalCommit: externalDropControl.committing || root.trashConfirmationPending || applicationSettings.iconPickerVisible
         setupPending: dockBackend.appImageSetupPending
         artworkTransitionActive: appImageTransition.active
         edgeHovered: edgePointer.hovered
@@ -122,7 +122,8 @@ Item {
         tasks: tasks
     }
     Keys.onEscapePressed: event => {
-        if (dragging && !dragControl.handedOff) { cancelReorder(); event.accepted = true }
+        if (activeFolderView) { activeFolderView.close(); event.accepted = true }
+        else if (dragging && !dragControl.handedOff) { cancelReorder(); event.accepted = true }
     }
     property int delegateRevision: 0
     function refreshDelegateRevision() { delegateRevision++ }
@@ -199,6 +200,8 @@ Item {
     property bool pointerInside: false
     property bool trashConfirmationPending: false
     property int openMenus: 0
+    property var activeFolderView: null
+    onActiveFolderViewChanged: requestInputUpdate()
     property bool menuPointerReconcilePending: false
     MouseArea {
         objectName: "trashConfirmationShield"
@@ -216,6 +219,14 @@ Item {
                 Qt.callLater(root.refreshPointer)
             }
         }
+    }
+    MouseArea {
+        objectName: "iconPickerDockShield"
+        anchors.fill: parent
+        z: 1001
+        visible: applicationSettings.iconPickerVisible
+        acceptedButtons: Qt.AllButtons
+        onPressed: applicationSettings.focusIconPicker()
     }
     // Root menus own idempotent leases; the dock owns their shared effects.
     // Submenus share the root lease and never change the count.
@@ -442,7 +453,9 @@ Item {
         if (autoHideEnabled) rectangles.push(Qt.rect(edge.x, edge.y, edge.width, edge.height))
         // Native drag events follow the input region. Accept them anywhere on
         // the surface so targeting matches the in-window drag.
-        if (dragControl.handedOff || externalDropControl.acceptedDrag || trashDrag) rectangles.push(Qt.rect(0, 0, width, height))
+        if (dragControl.handedOff || externalDropControl.acceptedDrag || trashDrag
+                || (activeFolderView && !activeFolderView.nativeWindow))
+            rectangles.push(Qt.rect(0, 0, width, height))
         const inset = shelf.rearInset
         const polygon = [
             Qt.point(shelf.x + inset, shelf.y),
@@ -681,6 +694,10 @@ Item {
                     Component.onCompleted: {
                         Qt.callLater(root.synchronizeFeedback)
                     }
+                    property real folderOpenProgress: folderView.visible ? 1 : 0
+                    Behavior on folderOpenProgress {
+                        NumberAnimation { duration: root.partingDurationMs; easing.type: Easing.OutCubic }
+                    }
                     readonly property string iconUrl: "image://tasks/" + dockBackend.revision + "/" + index
                     // The shared gap progress interpolates compact and parted
                     // positions together; no second delegate animation chases it.
@@ -737,8 +754,10 @@ Item {
                         sourceSize: Qt.size(Math.ceil(tuning.artworkSize * root.magnification.scaleSamples[0]),
                             Math.ceil(tuning.artworkSize * root.magnification.scaleSamples[0]))
                         source: task.iconUrl
-                        opacity: task.floating && dragControl.removing ? 1 - dragControl.removalProgress
-                            : click.pressed && !task.floating ? 0.55 : 1
+                        grayscaleSource: "image://tasks/gray/" + dockBackend.revision + "/" + task.index
+                        grayscaleProgress: task.folderOpenProgress
+                        opacity: (task.floating && dragControl.removing ? 1 - dragControl.removalProgress
+                            : click.pressed && !task.floating ? 0.55 : 1) * (1 - 0.2 * task.folderOpenProgress)
                         placeholder: task.needsAppImageSetup
                         opened: task.needsAppImageSetup && dockBackend.appImageSetupPending
                             && dockBackend.appImageSetupKey === task.appKey
@@ -772,8 +791,10 @@ Item {
                             y: task.bounceOffset
                             sourceSize: icon.sourceSize
                             source: task.iconUrl
+                            grayscaleSource: "image://tasks/gray/" + dockBackend.revision + "/" + task.index
+                            grayscaleProgress: task.folderOpenProgress
                             mirrorVertically: true
-                            opacity: click.pressed && !task.floating ? 0.55 : 1
+                            opacity: (click.pressed && !task.floating ? 0.55 : 1) * (1 - 0.2 * task.folderOpenProgress)
                             placeholder: task.needsAppImageSetup
                             openProgress: icon.openProgress
                             animateOpening: false
@@ -844,8 +865,11 @@ Item {
                             if (reordered) return
                             if (mouse.button === Qt.RightButton) menu.openForIcon()
                             else {
-                                if (!task.running && !task.active) bounce.triggerLaunch()
-                                dockBackend.activate(task.index, tuning.bringAllWindows)
+                                if (dockBackend.folderPath(task.index)) folderView.openForIcon()
+                                else {
+                                    if (!task.running && !task.active) bounce.triggerLaunch()
+                                    dockBackend.activate(task.index, tuning.bringAllWindows)
+                                }
                             }
                         }
                     }
@@ -887,6 +911,12 @@ Item {
                     }
                     TaskMenu {
                         id: menu
+                        dock: root
+                        taskItem: task
+                        anchor: menuAnchor
+                    }
+                    FolderView {
+                        id: folderView
                         dock: root
                         taskItem: task
                         anchor: menuAnchor

@@ -63,6 +63,12 @@ public:
     Q_INVOKABLE bool canTrashUrls(const QList<QUrl> &urls) const;
     Q_INVOKABLE bool trashUrls(const QList<QUrl> &urls);
     Q_INVOKABLE void openTrash();
+    Q_INVOKABLE bool focusIconPicker(const QString &title);
+    Q_INVOKABLE QString folderPath(int row) const;
+    Q_INVOKABLE QVariantList folderContents(const QString &path) const;
+    Q_INVOKABLE void startFolderItemDrag(QQuickWindow *window, const QUrl &url);
+    Q_INVOKABLE void openFolderItem(const QUrl &url);
+    Q_INVOKABLE void openFolderPath(const QString &path);
     Q_INVOKABLE bool canPinUrls(const QList<QUrl> &urls) const;
     Q_INVOKABLE bool pinUrls(const QList<QUrl> &urls, int beforeRow);
     Q_INVOKABLE bool pinTaskAt(int row, int beforeRow);
@@ -100,6 +106,7 @@ signals:
     void taskStructureAboutToChange();
     void taskDragStarted(int row, qreal size, const QPointF &hotSpot);
     void taskDragFinished(bool droppedOnDock);
+    void folderItemDragFinished();
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
@@ -153,4 +160,11 @@ public:
 private:
     DockBackend *m_backend;
     QCache<QString, QPixmap> m_cache; // Costs are KiB, bounded to 32 MiB.
+};
+
+// Thumbnail decoding runs on Qt Quick's image-loading thread.
+class FolderThumbnails : public QQuickImageProvider {
+public:
+    FolderThumbnails() : QQuickImageProvider(Image) {}
+    QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override;
 };

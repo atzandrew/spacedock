@@ -5,6 +5,8 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QQuickItem>
+#include <QApplication>
+#include <QWidget>
 #include <QIcon>
 #include <QProcess>
 #include <QDesktopServices>
@@ -16,9 +18,11 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFileIconProvider>
 #include <QTextStream>
 #include <QMouseEvent>
 #include <QDrag>
+#include <QPointer>
 #include <QMimeData>
 #include <QPixmap>
 #include <QTimer>
@@ -26,6 +30,8 @@
 #include <QDebug>
 #include <QCryptographicHash>
 #include <QImageReader>
+#include <QDateTime>
+#include <QDataStream>
 #include <QSaveFile>
 #include <QRegularExpression>
 #include <QSortFilterProxyModel>
@@ -65,6 +71,20 @@ bool DockBackend::trashUrls(const QList<QUrl> &urls)
 }
 
 void DockBackend::openTrash() { QDesktopServices::openUrl(QUrl(QStringLiteral("trash:/"))); }
+
+bool DockBackend::focusIconPicker(const QString &title)
+{
+    for (auto *widget : QApplication::topLevelWidgets()) {
+        if (!widget->isVisible() || !widget->inherits("KIconDialog") || widget->windowTitle() != title) continue;
+        QApplication::beep();
+        widget->showNormal();
+        if (widget->windowHandle()) widget->windowHandle()->alert(0);
+        widget->raise();
+        widget->activateWindow();
+        return true;
+    }
+    return false;
+}
 
 DockBackend::DockBackend(QQmlEngine *engine, bool sampleTasks, QObject *parent, KSharedConfig::Ptr config)
     : QIdentityProxyModel(parent), m_config(config ? config : KSharedConfig::openConfig("spacedockrc")), m_sampleTasks(sampleTasks), m_engine(engine), m_appImages(*this, m_appImageStore, sampleTasks)
@@ -566,11 +586,81 @@ QUrl DockBackend::applicationLauncher(const QUrl &url)
     return AppImageStore::applicationLauncher(url);
 }
 
+QString DockBackend::folderPath(int row) const
+{
+    if (row < 0 || row >= rowCount()) return {};
+    const auto url = taskData(index(row, 0), "LauncherUrlWithoutIcon").toUrl();
+    const QString path = url.isLocalFile() ? url.toLocalFile()
+        : url.scheme() == "applications" ? QStandardPaths::locate(QStandardPaths::GenericDataLocation, "applications/" + url.path()) : QString();
+    if (path.isEmpty()) return {};
+    KConfig desktop(path, KConfig::SimpleConfig);
+    return KConfigGroup(&desktop, "Desktop Entry").readEntry("X-Spacedock-Folder", QString());
+}
+
+QVariantList DockBackend::folderContents(const QString &path) const
+{
+    QVariantList result;
+    const auto entries = QDir(path).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Readable,
+        QDir::Name | QDir::IgnoreCase | QDir::DirsFirst);
+    for (const auto &entry : entries)
+        result.append(QVariantMap{{"name", entry.fileName()}, {"url", QUrl::fromLocalFile(entry.absoluteFilePath())},
+            {"icon", QString::fromLatin1(entry.absoluteFilePath().toUtf8().toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals))}});
+    return result;
+}
+
+void DockBackend::startFolderItemDrag(QQuickWindow *window, const QUrl &url)
+{
+    if (!window || !url.isLocalFile() || !url.host().isEmpty() || !QFileInfo::exists(url.toLocalFile())) return;
+    auto *mime = new QMimeData;
+    mime->setUrls({url});
+    auto *drag = new QDrag(window);
+    drag->setMimeData(mime);
+    const qreal ratio = window->devicePixelRatio();
+    auto pixmap = QFileIconProvider().icon(QFileInfo(url.toLocalFile())).pixmap(QSize(52, 52), ratio);
+    pixmap.setDevicePixelRatio(ratio);
+    drag->setPixmap(pixmap);
+    drag->setHotSpot(QPoint(26, 26));
+    // Like task drags, let the pointer handler return before entering the native drag loop.
+    QPointer<QDrag> guardedDrag(drag);
+    QTimer::singleShot(0, this, [this, guardedDrag] {
+        if (!guardedDrag) return;
+        guardedDrag->exec(Qt::CopyAction | Qt::MoveAction | Qt::LinkAction);
+        if (guardedDrag) guardedDrag->deleteLater();
+        emit folderItemDragFinished();
+    });
+}
+
+void DockBackend::openFolderItem(const QUrl &url) { QDesktopServices::openUrl(url); }
+void DockBackend::openFolderPath(const QString &path) { QDesktopServices::openUrl(QUrl::fromLocalFile(path)); }
+
+static QUrl folderLauncher(const QUrl &url)
+{
+    if (!url.isLocalFile() || !url.host().isEmpty()) return {};
+    const QFileInfo folder(url.toLocalFile());
+    if (!folder.isDir()) return {};
+    const QString path = folder.canonicalFilePath();
+    const QString id = QStringLiteral("spacedock-folder-") + QString::fromLatin1(QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha256).toHex()) + QStringLiteral(".desktop");
+    const QString directory = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/applications";
+    if (!QDir().mkpath(directory)) return {};
+    KConfig desktop(directory + "/" + id, KConfig::SimpleConfig);
+    KConfigGroup entry(&desktop, "Desktop Entry");
+    entry.writeEntry("Type", "Application");
+    entry.writeEntry("Name", folder.fileName().isEmpty() ? path : folder.fileName());
+    entry.writeEntry("Icon", "folder");
+    entry.writeEntry("Exec", "xdg-open %u");
+    entry.writeEntry("NoDisplay", true);
+    entry.writeEntry("X-Spacedock-Folder", path);
+    if (!desktop.sync()) return {};
+    AppImageStore::refreshDesktopCache();
+    return QUrl("applications:" + id);
+}
+
 bool DockBackend::canPinUrls(const QList<QUrl> &urls) const
 {
     bool valid = !urls.isEmpty();
     for (const auto &url : urls) {
-        const bool accepted = !applicationLauncher(url).isEmpty() || m_appImageStore.isAppImage(url);
+        const bool accepted = !applicationLauncher(url).isEmpty() || m_appImageStore.isAppImage(url)
+            || (url.isLocalFile() && url.host().isEmpty() && QFileInfo(url.toLocalFile()).isDir());
         if (property("traceDrops").toBool())
             qInfo() << "drop-trace validate" << "scheme" << url.scheme() << "accepted" << accepted;
         valid = valid && accepted;
@@ -602,7 +692,8 @@ bool DockBackend::pinUrls(const QList<QUrl> &urls, int beforeRow)
             if (applicationLauncher(QUrl(pins[i])) == before) { position = i; break; }
     }
     for (const auto &url : urls) {
-        const auto launcher = m_appImages.launcherForPin(url, pins);
+        const auto launcher = url.isLocalFile() && QFileInfo(url.toLocalFile()).isDir()
+            ? folderLauncher(url) : m_appImages.launcherForPin(url, pins);
         if (launcher.isEmpty()) return false;
         bool duplicate = false;
         for (const auto &pin : pins)
@@ -842,13 +933,109 @@ QString DockBackend::iconCacheIdentity(int row, bool defaultOnly) const
          + QChar(0) + QIcon::themeName()).toUtf8(), QCryptographicHash::Sha256).toHex());
 }
 
+// Qt folds PNG text keys containing colons together. Read the small, standard
+// tEXt fields directly so KDE's Thumb:: metadata remains distinguishable.
+static QHash<QByteArray, QByteArray> thumbnailMetadata(const QString &path)
+{
+    QFile file(path);
+    QHash<QByteArray, QByteArray> result;
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 16 * 1024 * 1024
+        || file.read(8) != QByteArray::fromHex("89504e470d0a1a0a")) return {};
+    QDataStream stream(&file);
+    stream.setByteOrder(QDataStream::BigEndian);
+    while (!stream.atEnd()) {
+        quint32 length = 0;
+        stream >> length;
+        const auto type = file.read(4);
+        if (stream.status() != QDataStream::Ok || type.size() != 4
+            || qint64(length) + 4 > file.bytesAvailable()) return {};
+        if (type == "tEXt" && length <= 4096) {
+            const auto chunk = file.read(length);
+            const auto separator = chunk.indexOf('\0');
+            if (separator > 0) result.insert(chunk.left(separator), chunk.mid(separator + 1));
+        } else if (!file.seek(file.pos() + length)) return {};
+        if (!file.seek(file.pos() + 4)) return {};
+        if (type == "IEND") break;
+    }
+    return result;
+}
+
+static QImage cachedFolderThumbnail(const QString &path, const QSize &pixels)
+{
+    const QFileInfo file(path);
+    if (!file.isFile()) return {};
+    const QString uri = QUrl::fromLocalFile(file.absoluteFilePath()).toString(QUrl::FullyEncoded);
+    const auto hash = QCryptographicHash::hash(uri.toUtf8(), QCryptographicHash::Md5).toHex();
+    const QString root = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails/";
+    const QStringList sizes = pixels.width() <= 128 && pixels.height() <= 128
+        ? QStringList{"normal", "large", "x-large", "xx-large"}
+        : QStringList{"large", "x-large", "xx-large", "normal"};
+    for (const auto &size : sizes) {
+        const QString cached = root + size + "/" + QString::fromLatin1(hash) + ".png";
+        const auto metadata = thumbnailMetadata(cached);
+        const auto storedUri = metadata.value("Thumb::URI");
+        // KDE's cache commonly omits URI; the filename still identifies it.
+        if ((!storedUri.isEmpty() && storedUri != uri.toUtf8())
+            || metadata.value("Thumb::MTime") != QByteArray::number(file.lastModified().toSecsSinceEpoch())) continue;
+        const auto storedSize = metadata.value("Thumb::Size");
+        if (!storedSize.isEmpty() && storedSize != QByteArray::number(file.size())) continue;
+        QImageReader reader(cached, "png");
+        const auto dimensions = reader.size();
+        if (!dimensions.isValid() || dimensions.width() > 1024 || dimensions.height() > 1024) continue;
+        const auto image = reader.read();
+        if (image.isNull()) continue;
+        return image.scaled(pixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
+    return {};
+}
+
+QImage FolderThumbnails::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
+{
+    const auto path = QString::fromUtf8(QByteArray::fromBase64(id.toLatin1(), QByteArray::Base64UrlEncoding));
+    auto image = cachedFolderThumbnail(path, requestedSize.isValid() ? requestedSize : QSize(64, 64));
+    if (image.isNull()) {
+        // A transparent single pixel indicates that the file icon should remain visible.
+        image = QImage(1, 1, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::transparent);
+    }
+    if (size) *size = image.size();
+    return image;
+}
+
 QPixmap TaskIcons::requestPixmap(const QString &id, QSize *size, const QSize &requestedSize)
 {
     const QSize pixels = requestedSize.isValid() ? requestedSize : QSize(64, 64);
+    const bool file = id.startsWith("file/");
+    const bool fileIcon = id.startsWith("fileicon/");
+    if (file || fileIcon) {
+        const auto path = QString::fromUtf8(QByteArray::fromBase64(id.mid(file ? 5 : 9).toLatin1(), QByteArray::Base64UrlEncoding));
+        if (file) {
+            const auto thumbnail = cachedFolderThumbnail(path, pixels);
+            if (!thumbnail.isNull()) {
+                auto pixmap = QPixmap::fromImage(thumbnail);
+                if (size) *size = pixmap.size();
+                return pixmap;
+            }
+        }
+        const QFileInfo info(path);
+        const auto key = QStringLiteral("fileicon/") + path + QLatin1Char('/')
+            + QString::number(info.lastModified().toMSecsSinceEpoch()) + QLatin1Char('/')
+            + QString::number(info.size()) + QLatin1Char('/') + QIcon::themeName() + QLatin1Char('/')
+            + QString::number(pixels.width()) + QLatin1Char('x') + QString::number(pixels.height());
+        if (const auto *cached = m_cache.object(key)) {
+            if (size) *size = cached->size();
+            return *cached;
+        }
+        const auto pixmap = QFileIconProvider().icon(info).pixmap(pixels, 1.0);
+        if (size) *size = pixmap.size();
+        if (!pixmap.isNull()) m_cache.insert(key, new QPixmap(pixmap), qMax(1, int((qint64(pixmap.width()) * pixmap.height() * 4 + 1023) / 1024)));
+        return pixmap;
+    }
     const bool theme = id.startsWith("theme/");
     const bool defaultOnly = id.startsWith("default/");
+    const bool grayscale = id.startsWith("gray/");
     const QString identity = theme ? id : m_backend->iconCacheIdentity(id.section('/', -1).toInt(), defaultOnly);
-    const QString key = identity + QLatin1Char('/') + QString::number(pixels.width()) + QLatin1Char('x') + QString::number(pixels.height());
+    const QString key = (grayscale ? QStringLiteral("gray/") : QString()) + identity + QLatin1Char('/') + QString::number(pixels.width()) + QLatin1Char('x') + QString::number(pixels.height());
     if (const auto *cached = m_cache.object(key)) {
         if (size) *size = cached->size();
         return *cached;
@@ -856,9 +1043,21 @@ QPixmap TaskIcons::requestPixmap(const QString &id, QSize *size, const QSize &re
     const bool trace = qEnvironmentVariableIsSet("SPACEDOCK_PROFILE_RESIZE");
     QElapsedTimer timer;
     if (trace) timer.start();
-    const auto pixmap = id.startsWith("theme/") ? QIcon::fromTheme(QUrl::fromPercentEncoding(id.mid(6).toUtf8())).pixmap(pixels, 1.0)
+    auto pixmap = id.startsWith("theme/") ? QIcon::fromTheme(QUrl::fromPercentEncoding(id.mid(6).toUtf8())).pixmap(pixels, 1.0)
         : id.startsWith("default/") ? m_backend->defaultIcon(id.section('/', -1).toInt(), pixels)
         : m_backend->icon(id.section('/', -1).toInt(), pixels);
+    if (grayscale && !pixmap.isNull()) {
+        auto image = pixmap.toImage().convertToFormat(QImage::Format_ARGB32);
+        for (int y = 0; y < image.height(); ++y) {
+            auto *line = reinterpret_cast<QRgb *>(image.scanLine(y));
+            for (int x = 0; x < image.width(); ++x) {
+                const auto pixel = line[x];
+                const int gray = qGray(pixel);
+                line[x] = qRgba(gray, gray, gray, qAlpha(pixel));
+            }
+        }
+        pixmap = QPixmap::fromImage(image);
+    }
     if (trace) qInfo() << "resize-profile icon ms" << timer.elapsed() << "requested" << requestedSize << "result" << pixmap.size();
     if (size) *size = pixmap.size();
     if (!pixmap.isNull()) m_cache.insert(key, new QPixmap(pixmap), qMax(1, int((qint64(pixmap.width()) * pixmap.height() * 4 + 1023) / 1024)));

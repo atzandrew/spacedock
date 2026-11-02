@@ -12,6 +12,11 @@
 #include <QStandardItemModel>
 #include "launcher_model.h"
 #include <QFile>
+#include <QImageWriter>
+#include <QBuffer>
+#include <QDataStream>
+#include <QCryptographicHash>
+#include <QDateTime>
 #include <QDir>
 #include <QStandardPaths>
 #include <KConfigGroup>
@@ -49,6 +54,102 @@ public:
 class DockBackendTest : public QObject {
     Q_OBJECT
 private slots:
+    void folderDropsAndContents() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto oldDataHome = qgetenv("XDG_DATA_HOME");
+        qputenv("XDG_DATA_HOME", directory.path().toUtf8());
+        const QString folder = directory.filePath("My folder");
+        QVERIFY(QDir().mkpath(folder));
+        QVERIFY(QDir().mkpath(folder + "/Subfolder"));
+        QFile file(folder + "/a # file.txt");
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        QQmlEngine engine;
+        DockBackend backend(&engine, false, nullptr, KSharedConfig::openConfig(directory.filePath("dockrc")));
+        PinDropModel model;
+        backend.setSourceModel(&model);
+        const auto url = QUrl::fromLocalFile(folder);
+        QVERIFY(backend.canPinUrls({url}));
+        QVERIFY(!backend.canPinUrls({QUrl::fromLocalFile(file.fileName())}));
+        QVERIFY(backend.pinUrls({url}, -1));
+        QCOMPARE(model.launchers.size(), 1);
+        QVERIFY(backend.pinUrls({url}, -1));
+        QCOMPARE(model.launchers.size(), 1);
+        constexpr int launcherRole = Qt::UserRole + 1;
+        model.setItemRoleNames({{launcherRole, "LauncherUrlWithoutIcon"}});
+        auto *item = new QStandardItem;
+        item->setData(QUrl(model.launchers.first()), launcherRole);
+        model.appendRow(item);
+        QCOMPARE(backend.folderPath(0), folder);
+        const auto contents = backend.folderContents(folder);
+        QCOMPARE(contents.size(), 2);
+        QCOMPARE(contents.at(0).toMap().value("name").toString(), QString("Subfolder"));
+        QCOMPARE(contents.at(1).toMap().value("url").toUrl(), QUrl::fromLocalFile(file.fileName()));
+        if (oldDataHome.isNull()) qunsetenv("XDG_DATA_HOME"); else qputenv("XDG_DATA_HOME", oldDataHome);
+    }
+    void folderThumbnailsUseValidDesktopCache() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto previous = qgetenv("XDG_CACHE_HOME");
+        qputenv("XDG_CACHE_HOME", directory.path().toUtf8());
+        const QString path = directory.filePath("photo #1.jpg");
+        QFile original(path);
+        QVERIFY(original.open(QIODevice::WriteOnly));
+        original.write("original");
+        original.close();
+        const QString uri = QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded);
+        const auto hash = QCryptographicHash::hash(uri.toUtf8(), QCryptographicHash::Md5).toHex();
+        QVERIFY(QDir().mkpath(directory.filePath("thumbnails/normal")));
+        const auto thumbnail = directory.filePath("thumbnails/normal/" + QString::fromLatin1(hash) + ".png");
+        QImage image(32, 32, QImage::Format_ARGB32);
+        image.fill(Qt::red);
+        // Insert literal PNG text keys: Qt's PNG writer folds keys at colons.
+        auto writeThumbnail = [&](const QByteArray &mtime) {
+            QByteArray png;
+            QBuffer buffer(&png);
+            buffer.open(QIODevice::WriteOnly);
+            if (!image.save(&buffer, "PNG")) return false;
+            buffer.close();
+            auto chunk = [](const QByteArray &key, const QByteArray &value) {
+                const QByteArray data = QByteArray("tEXt") + key + QByteArray(1, '\0') + value;
+                quint32 crc = 0xffffffff;
+                for (const auto byte : data) {
+                    crc ^= quint8(byte);
+                    for (int bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xedb88320u & -(crc & 1u));
+                }
+                QByteArray encoded;
+                QDataStream stream(&encoded, QIODevice::WriteOnly);
+                stream << quint32(data.size() - 4);
+                stream.writeRawData(data.constData(), data.size());
+                stream << (crc ^ 0xffffffffu);
+                return encoded;
+            };
+            png.insert(33, chunk("Thumb::MTime", mtime));
+            png.insert(33, chunk("Thumb::Size", QByteArray::number(QFileInfo(path).size())));
+            QFile out(thumbnail);
+            return out.open(QIODevice::WriteOnly | QIODevice::Truncate) && out.write(png) == png.size();
+        };
+        QVERIFY(writeThumbnail(QByteArray::number(QFileInfo(path).lastModified().toSecsSinceEpoch())));
+        QQmlEngine engine;
+        DockBackend backend(&engine, true);
+        TaskIcons provider(&backend);
+        const auto id = "file/" + QString::fromLatin1(path.toUtf8().toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+        const auto valid = provider.requestPixmap(id, nullptr, QSize(64, 64)).toImage();
+        QVERIFY(!valid.isNull());
+        QCOMPARE(valid.pixelColor(16, 16), QColor(Qt::red));
+        FolderThumbnails thumbnails;
+        const auto encoded = id.mid(5);
+        QCOMPARE(thumbnails.requestImage(encoded, nullptr, QSize(64, 64)).pixelColor(16, 16), QColor(Qt::red));
+        // An old timestamp must invalidate the cached thumbnail.
+        QVERIFY(writeThumbnail("1"));
+        const auto fallback = provider.requestPixmap(id, nullptr, QSize(64, 64)).toImage();
+        QVERIFY(fallback.isNull() || fallback.pixelColor(16, 16) != QColor(Qt::red));
+        const auto missing = thumbnails.requestImage(encoded, nullptr, QSize(64, 64));
+        QCOMPARE(missing.size(), QSize(1, 1));
+        QCOMPARE(missing.pixelColor(0, 0).alpha(), 0);
+        if (previous.isNull()) qunsetenv("XDG_CACHE_HOME"); else qputenv("XDG_CACHE_HOME", previous);
+    }
     void publishesIconGeometry() {
         QTemporaryDir directory;
         QQmlEngine engine;
@@ -123,6 +224,17 @@ private slots:
         QCOMPARE(first.size(), QSize(200, 200));
         QCOMPARE(first.devicePixelRatio(), 1.0);
         QCOMPARE(reported, first.size());
+        const auto gray = provider.requestPixmap("gray/1/0", &reported, QSize(200, 200)).toImage();
+        const auto original = first.toImage();
+        QVERIFY(!gray.isNull());
+        for (int y = 0; y < gray.height(); y += 7) {
+            for (int x = 0; x < gray.width(); x += 7) {
+                const auto pixel = gray.pixelColor(x, y);
+                QCOMPARE(pixel.red(), pixel.green());
+                QCOMPARE(pixel.green(), pixel.blue());
+                QCOMPARE(pixel.alpha(), original.pixelColor(x, y).alpha());
+            }
+        }
         const auto second = provider.requestPixmap("1/0", &reported, QSize(200, 200));
         QCOMPARE(second.cacheKey(), first.cacheKey());
         const auto changed = provider.requestPixmap("2/0", &reported, QSize(200, 200));

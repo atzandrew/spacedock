@@ -163,6 +163,7 @@ int main(int argc, char **argv)
         return 0;
     }
     engine.addImageProvider("tasks", new TaskIcons(&backend));
+    engine.addImageProvider("folderthumbnails", new FolderThumbnails);
     engine.addImageProvider("tooltipshadows", new ToolTipShadows);
     engine.rootContext()->setContextProperty("dockBackend", &backend);
     engine.rootContext()->setContextProperty("tuning", &tuning);

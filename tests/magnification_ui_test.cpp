@@ -22,9 +22,23 @@
 #include <QMimeData>
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QWheelEvent>
 #include <QTimer>
 #include <QFile>
 #include <KConfigGroup>
+
+class FolderThumbnailFixture : public QQuickImageProvider {
+public:
+    FolderThumbnailFixture() : QQuickImageProvider(Image) {}
+    QImage requestImage(const QString &id, QSize *size, const QSize &) override {
+        const auto path = QByteArray::fromBase64(id.toLatin1(), QByteArray::Base64UrlEncoding);
+        const bool hasPreview = path.endsWith("0.txt");
+        QImage image(hasPreview ? QSize(16, 16) : QSize(1, 1), QImage::Format_ARGB32);
+        image.fill(hasPreview ? Qt::red : Qt::transparent);
+        if (size) *size = image.size();
+        return image;
+    }
+};
 
 // Model the launcher's synchronous row insertion without the KDE service cache.
 class InsertingPinDropModel : public QStandardItemModel {
@@ -138,6 +152,7 @@ private slots:
         backend.setSourceModel(&model);
         Tuning tuning(":/tuning.json");
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -185,6 +200,7 @@ private slots:
         backend.setSourceModel(&model);
         Tuning tuning(":/tuning.json");
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -232,6 +248,7 @@ private slots:
         backend.setSourceModel(&model);
         Tuning tuning(":/tuning.json");
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -281,6 +298,7 @@ private slots:
         Tuning tuning(":/tuning.json");
         tuning.setSize(128);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -332,6 +350,7 @@ private slots:
         DockBackend backend(&engine, true);
         Tuning tuning(":/tuning.json");
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -415,6 +434,7 @@ private slots:
 
         Tuning tuning(":/tuning.json");
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -551,11 +571,49 @@ private slots:
             (QStringList{secondUrl.toString(), url.toString()}));
 
     }
+    void iconPickerDockClickRaisesChooser() {
+        Tuning tuning(":/tuning.json");
+        QQmlApplicationEngine engine;
+        DockBackend backend(&engine, true);
+        engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
+        engine.addImageProvider("tooltipshadows", new ToolTipShadows);
+        engine.rootContext()->setContextProperty("dockBackend", &backend);
+        engine.rootContext()->setContextProperty("tuning", &tuning);
+        engine.rootContext()->setContextProperty("previewMode", true);
+        engine.load(QUrl("qrc:/qml/PreviewWindow.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *content = window->findChild<QQuickItem *>("dockContent");
+        auto *editor = window->findChild<QQuickWindow *>("applicationSettings");
+        QVERIFY(content);
+        QVERIFY(editor);
+        editor->show();
+        auto *picker = editor->findChild<QObject *>("systemIconPicker");
+        QVERIFY(picker);
+        QVERIFY(QMetaObject::invokeMethod(picker, "open"));
+        QTRY_VERIFY(picker->property("visible").toBool());
+        auto *shield = content->findChild<QQuickItem *>("iconPickerDockShield");
+        auto *editorShield = editor->findChild<QQuickItem *>("iconPickerEditorShield");
+        QVERIFY(shield && shield->isVisible());
+        QVERIFY(editorShield && editorShield->isVisible());
+        QVERIFY(backend.focusIconPicker(picker->property("title").toString()));
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier,
+                          QPoint(window->width() / 2, window->height() - 40));
+        QVERIFY(picker->property("visible").toBool());
+        QVERIFY(QMetaObject::invokeMethod(picker, "close"));
+        QTRY_VERIFY(!picker->property("visible").toBool());
+        QVERIFY(!shield->isVisible());
+        QVERIFY(!editorShield->isVisible());
+        editor->close();
+    }
     void trashConfirmationIsRecreatedAfterRejection() {
         Tuning tuning(":/tuning.json");
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -615,6 +673,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -696,6 +755,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -725,6 +785,140 @@ private slots:
         QTest::qWait(250);
         QVERIFY(qAbs(content->property("pointerX").toDouble() - target) < 0.1);
     }
+    void folderDividerTracksScroll() {
+        Tuning tuning(":/tuning.json");
+        QQmlApplicationEngine engine;
+        DockBackend backend(&engine, true);
+        engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnailFixture);
+        engine.addImageProvider("tooltipshadows", new ToolTipShadows);
+        engine.rootContext()->setContextProperty("dockBackend", &backend);
+        engine.rootContext()->setContextProperty("tuning", &tuning);
+        engine.rootContext()->setContextProperty("previewMode", false);
+        engine.load(QUrl("qrc:/qml/PreviewWindow.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        window->setHeight(900);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        auto *content = window->findChild<QQuickItem *>("dockContent");
+        QTRY_VERIFY(!content->property("startingUp").toBool());
+        auto *task = taskItems(content)[0];
+        auto *artwork = task->findChild<QQuickItem *>("taskArtwork");
+        QVERIFY(artwork);
+        auto *view = task->findChild<QObject *>("folderView");
+        QVERIFY(view);
+        QVERIFY(QMetaObject::invokeMethod(view, "openForIcon"));
+        QVERIFY(view->property("openingProgress").toReal() < 1.0);
+        QTRY_VERIFY(view->property("openingProgress").toReal() > 0.99);
+        QTRY_VERIFY(qAbs(artwork->opacity() - 0.8) < 0.01);
+        QTRY_VERIFY(artwork->property("grayscaleProgress").toReal() > 0.99);
+        QTemporaryDir profileFolder;
+        QVariantList entries;
+        for (int i = 0; i < 80; ++i) {
+            const QString path = profileFolder.filePath(QString::number(i) + ".txt");
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("folder profile");
+            file.close();
+            entries.append(QVariantMap{{"name", QString::number(i)}, {"icon", QString::fromLatin1(path.toUtf8().toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals))}, {"url", QUrl::fromLocalFile(path)}});
+        }
+        QVERIFY(view->setProperty("entries", entries));
+        auto *grid = view->findChild<QQuickItem *>("folderGrid");
+        auto *divider = view->findChild<QQuickItem *>("folderScrollDivider");
+        QVERIFY(grid);
+        QVERIFY(divider);
+        QQmlExpression firstFolderItem(engine.rootContext(), grid, "itemAtIndex(0)");
+        QTRY_VERIFY(firstFolderItem.evaluate().value<QObject *>());
+        auto *firstFolderEntry = firstFolderItem.evaluate().value<QObject *>();
+        auto *thumbnail = firstFolderEntry->findChild<QQuickItem *>("folderThumbnail");
+        auto *fileIcon = firstFolderEntry->findChild<QQuickItem *>("folderFileIcon");
+        QVERIFY(thumbnail && fileIcon);
+        QTRY_COMPARE(thumbnail->property("status").toInt(), 1); // Image.Ready
+        QVERIFY(thumbnail->isVisible());
+        QVERIFY(!fileIcon->isVisible());
+        QQmlExpression secondFolderItem(engine.rootContext(), grid, "itemAtIndex(1)");
+        QTRY_VERIFY(secondFolderItem.evaluate().value<QObject *>());
+        auto *secondFolderEntry = secondFolderItem.evaluate().value<QObject *>();
+        auto *fallbackThumbnail = secondFolderEntry->findChild<QQuickItem *>("folderThumbnail");
+        auto *fallbackIcon = secondFolderEntry->findChild<QQuickItem *>("folderFileIcon");
+        QVERIFY(fallbackThumbnail && fallbackIcon);
+        QTRY_COMPARE(fallbackThumbnail->property("status").toInt(), 1);
+        QVERIFY(!fallbackThumbnail->isVisible());
+        QVERIFY(fallbackIcon->isVisible());
+        QTRY_VERIFY(grid->property("contentHeight").toReal() > grid->height());
+        QVERIFY(!divider->isVisible());
+        auto *popup = grid->window();
+        QVERIFY(popup);
+        QCOMPARE(popup, window);
+        QVERIFY(!view->property("nativeWindow").toBool());
+        QTRY_VERIFY(window->mask().contains(QPoint(5, 5)));
+        const QPointF position = grid->mapToScene(QPointF(grid->width() / 2, grid->height() / 2));
+        QWheelEvent wheel(position, popup->mapToGlobal(position.toPoint()), QPoint(), QPoint(0, -120),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(popup, &wheel);
+        QTRY_VERIFY(grid->property("contentY").toReal() > 1);
+        QTRY_VERIFY(divider->isVisible());
+        QTest::qWait(220);
+        QWheelEvent reverse(position, popup->mapToGlobal(position.toPoint()), QPoint(), QPoint(0, 120),
+            Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QCoreApplication::sendEvent(popup, &reverse);
+        QTRY_VERIFY(!divider->isVisible());
+        QCOMPARE(grid->x(), qreal(25));
+        QTest::qWait(550);
+        QVERIFY(QMetaObject::invokeMethod(grid, "positionViewAtEnd"));
+        QQmlExpression lastItem(engine.rootContext(), grid, "itemAtIndex(80)");
+        QTRY_VERIFY(lastItem.evaluate().value<QObject *>());
+        QCOMPARE(lastItem.evaluate().value<QObject *>()->objectName(), QString("folderOpenInFileManager"));
+        auto *folderContent = view->findChild<QQuickItem *>("folderContent");
+        QVERIFY(folderContent);
+        const int closeDuration = view->property("closeDuration").toInt();
+        QCOMPARE(view->property("openDuration").toInt(), qRound(closeDuration * 0.7));
+        QSignalSpy closed(view, SIGNAL(closed()));
+        auto *folderPanel = qvariant_cast<QObject *>(view->property("background"));
+        QVERIFY(folderPanel);
+        QSignalSpy panelPainted(folderPanel, SIGNAL(painted()));
+        QVERIFY(panelPainted.isValid());
+        QElapsedTimer closeFramesClock;
+        QList<qint64> closeFrames;
+        const bool traceFolderFrames = qEnvironmentVariableIsSet("SPACEDOCK_PROFILE_FOLDER_FRAMES");
+        auto frameConnection = connect(popup, &QQuickWindow::frameSwapped, view, [&] {
+            if (traceFolderFrames && closeFramesClock.isValid()) closeFrames.append(closeFramesClock.elapsed());
+        });
+        auto *wheelAnimation = view->findChild<QObject *>("folderWheelAnimation");
+        QVERIFY(wheelAnimation);
+        QCoreApplication::sendEvent(popup, &reverse);
+        QTRY_VERIFY(wheelAnimation->property("running").toBool());
+        if (traceFolderFrames) closeFramesClock.start();
+        QTest::mouseClick(window, Qt::LeftButton, Qt::NoModifier, QPoint(5, 5));
+        QVERIFY(!wheelAnimation->property("running").toBool());
+        QTest::qWait(closeDuration / 3);
+        QVERIFY(view->property("closingProgress").toReal() < 0.99);
+        QVERIFY(view->property("closingProgress").toReal() > 0.08);
+        auto *panelItem = qobject_cast<QQuickItem *>(folderPanel);
+        QVERIFY(panelItem);
+        const QImage closeFrame = popup->grabWindow();
+        QVERIFY(!closeFrame.isNull());
+        const QPointF panelPoint = panelItem->mapToScene(QPointF(20, 90));
+        const QPoint pixel = (panelPoint * closeFrame.devicePixelRatio()).toPoint();
+        QVERIFY(closeFrame.rect().contains(pixel));
+        const QColor panelPixel = closeFrame.pixelColor(pixel);
+        QVERIFY2(panelPixel.alpha() >= 150 && panelPixel.red() < 25,
+            "Folder panel became transparent while closing");
+        QCOMPARE(closed.count(), 0);
+        QTRY_COMPARE(closed.count(), 1);
+        QVERIFY(content->property("activeFolderView").isNull());
+        QTRY_VERIFY(!window->mask().contains(QPoint(5, 5)));
+        QCOMPARE(panelPainted.count(), 0);
+        disconnect(frameConnection);
+        if (traceFolderFrames) qInfo() << "folder-close frame times ms" << closeFrames << "panel paints" << panelPainted.count();
+        QTRY_VERIFY(qAbs(artwork->opacity() - 1.0) < 0.01);
+        QTRY_VERIFY(artwork->property("grayscaleProgress").toReal() < 0.01);
+        QVERIFY(QMetaObject::invokeMethod(view, "openForIcon"));
+        QVERIFY(view->property("openingProgress").toReal() < 1.0);
+        QTest::keyClick(window, Qt::Key_Escape);
+        QTRY_COMPARE(view->property("openingProgress").toReal(), qreal(1));
+        QVERIFY(content->property("activeFolderView").isNull());
+    }
     void openMenuFreezesIconLayout() {
         // Wayland places a menu once, when it opens. Icons moving afterwards
         // (here: a magnification animation still in flight) leave the menu
@@ -733,6 +927,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -769,6 +964,7 @@ private slots:
         DockBackend backend(&engine, true);
         QVERIFY(backend.sourceModel()->removeRows(9, 4));
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -859,6 +1055,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -895,6 +1092,7 @@ private slots:
         DockBackend backend(&engine, true);
         backend.setSourceModel(&model);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -926,6 +1124,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -1031,6 +1230,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -1185,6 +1385,7 @@ private slots:
         DockBackend backend(&engine, true);
         backend.setDragTracing(true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -1292,6 +1493,7 @@ private slots:
         backend.setSimulatedTaskDrags(true);
         QSignalSpy started(&backend, &DockBackend::taskDragStarted);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -1399,6 +1601,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -1431,6 +1634,7 @@ private slots:
         QQmlApplicationEngine engine;
         DockBackend backend(&engine, true);
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -1481,6 +1685,7 @@ private slots:
         DockBackend backend(&engine, true);
         QVERIFY2(backend.isReady(), qPrintable(backend.error()));
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);

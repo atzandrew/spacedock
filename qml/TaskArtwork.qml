@@ -3,6 +3,8 @@ import QtQuick
 Item {
     id: artwork
     property url source
+    property url grayscaleSource
+    property real grayscaleProgress: 0
     property size sourceSize: Qt.size(128, 128)
     property bool placeholder: false
     property bool opened: false
@@ -23,9 +25,20 @@ Item {
         sourceSize: artwork.sourceSize
         mirrorVertically: artwork.mirrorVertically
         visible: !artwork.placeholder
+        opacity: 1 - artwork.grayscaleProgress
         smooth: true
         mipmap: true
         Component.onCompleted: if ("retainWhileLoading" in image) image.retainWhileLoading = true
+    }
+    Image {
+        anchors.fill: parent
+        source: artwork.grayscaleProgress > 0 ? artwork.grayscaleSource : ""
+        sourceSize: artwork.sourceSize
+        mirrorVertically: artwork.mirrorVertically
+        visible: !artwork.placeholder && artwork.grayscaleProgress > 0
+        opacity: artwork.grayscaleProgress
+        smooth: true
+        mipmap: true
     }
     Image {
         x: -artwork.width * 0.25

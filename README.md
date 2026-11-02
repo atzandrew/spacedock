@@ -27,16 +27,18 @@ This tool is in beta and **will** have bugs! Please report them.
 * Real-time dock scaling
 * Icon label and image customization
 * AppImage handling/workaround
+* Folder grid view with drag-out
 
 ### Features in development
 
-* Folder view/fanning folder view
+* Folder fanning view
 * Application launcher
 * Themes, including flat design
 * Better DPI scaling (developed on 1.5x scale; other variations need testing)
-* Drag dock separator to scroll
+* Drag dock separator to resize
 * Better right-click menu design
 * Better support for older versions of Plasma and Qt
+* Left and right dock positions
 
 ### Known bugs and limitations
 

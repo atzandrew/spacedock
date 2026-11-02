@@ -198,6 +198,7 @@ Item {
         DockBackend backend(&engine, true);
         QVERIFY2(backend.isReady(), qPrintable(backend.error()));
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);
@@ -339,6 +340,7 @@ Item {
         DockBackend backend(&engine, true);
         QVERIFY(backend.isReady());
         engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
         engine.addImageProvider("tooltipshadows", new ToolTipShadows);
         engine.rootContext()->setContextProperty("dockBackend", &backend);
         engine.rootContext()->setContextProperty("tuning", &tuning);

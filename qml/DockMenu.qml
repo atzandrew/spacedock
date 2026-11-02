@@ -7,6 +7,16 @@ T.Menu {
     id: menu
     property bool showPointer: false
     property Item pointerTarget: null
+    property bool nativeWindow: true
+    function updatePopupType() {
+        if ("popupType" in menu && !visible)
+            menu.popupType = nativeWindow ? T.Popup.Window : T.Popup.Item
+    }
+    onNativeWindowChanged: updatePopupType()
+    // Folder popups can animate the panel without changing the native popup geometry.
+    property real panelScale: 1
+    property real panelScaleOriginX: 0
+    property real panelScaleOriginY: 0
     readonly property var popupWindow: background ? background.Window.window : null
     property real pointerX: {
         // A compositor can constrain the native popup independently of the
@@ -74,7 +84,7 @@ T.Menu {
         shown: !subMenu || subMenu.enabled
     }
     Component.onCompleted: {
-        if ("popupType" in menu) menu.popupType = T.Popup.Window
+        updatePopupType()
     }
     contentItem: ListView {
         implicitHeight: contentHeight
@@ -98,6 +108,12 @@ T.Menu {
         objectName: "dockMenuPanel"
         // Lets native placement code find the menu from its window.
         readonly property var dockMenu: menu
+        transform: Scale {
+            origin.x: menu.panelScaleOriginX
+            origin.y: menu.panelScaleOriginY
+            xScale: menu.panelScale
+            yScale: menu.panelScale
+        }
         onWidthChanged: requestPaint()
         onHeightChanged: requestPaint()
         Connections {

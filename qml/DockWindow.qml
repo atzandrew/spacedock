@@ -14,7 +14,9 @@ Window {
     LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
     LayerShell.Window.layer: LayerShell.Window.LayerTop
     LayerShell.Window.exclusionZone: content.autoHideEnabled ? 0 : Math.ceil(content.layout.shelfHeight)
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+    // Embedded folder popups need keyboard input for Escape while open.
+    LayerShell.Window.keyboardInteractivity: content.activeFolderView && !content.activeFolderView.nativeWindow
+        ? LayerShell.Window.KeyboardInteractivityExclusive : LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.scope: "spacedock"
     Component.onCompleted: {
         // Older LayerShellQt releases do not expose this optional property.

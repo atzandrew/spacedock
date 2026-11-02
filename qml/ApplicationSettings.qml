@@ -13,6 +13,8 @@ Window {
     color: palette.window
     SystemPalette { id: palette }
     property var app: ({})
+    readonly property bool iconPickerVisible: iconPicker.visible
+    function focusIconPicker() { return dockBackend.focusIconPicker(iconPicker.title) }
     property url selectedImage: ""
     property string selectedThemeIcon: ""
     property bool restoring: false
@@ -37,7 +39,7 @@ Window {
         id: iconPicker
         objectName: "systemIconPicker"
         title: qsTr("Choose an icon")
-        modality: Qt.ApplicationModal
+        modality: Qt.NonModal
         onAccepted: {
             if (!iconName) return
             if (iconName.startsWith("/")) {
@@ -55,6 +57,14 @@ Window {
         target: dockBackend.imagePicker
         function onSelected(url) { window.selectedImage = url; window.selectedThemeIcon = ""; window.restoring = false; window.errorText = "" }
         function onFailed() { window.errorText = qsTr("Could not open the system file picker.") }
+    }
+    MouseArea {
+        objectName: "iconPickerEditorShield"
+        anchors.fill: parent
+        z: 1000
+        visible: window.iconPickerVisible
+        acceptedButtons: Qt.AllButtons
+        onPressed: window.focusIconPicker()
     }
     ColumnLayout {
         anchors.fill: parent; anchors.margins: 24; spacing: 14
