@@ -1,4 +1,6 @@
 #include "dockbackend.h"
+#include <KApplicationTrader>
+#include <KService>
 #include <KConfigGroup>
 #include <KConfig>
 #include <QQmlComponent>
@@ -597,6 +599,33 @@ QString DockBackend::folderPath(int row) const
     return KConfigGroup(&desktop, "Desktop Entry").readEntry("X-Spacedock-Folder", QString());
 }
 
+QString DockBackend::folderPreference(const QString &path, const QString &kind) const
+{
+    if (path.isEmpty() || (kind != QLatin1String("view") && kind != QLatin1String("sort"))) return {};
+    const auto key = QString::fromLatin1(QCryptographicHash::hash(QDir::cleanPath(path).toUtf8(), QCryptographicHash::Sha256).toHex());
+    const QString fallback = kind == QLatin1String("view") ? QStringLiteral("grid") : QStringLiteral("name");
+    const QString value = KConfigGroup(m_config, "FolderPreferences").readEntry(key + QLatin1Char('_') + kind, fallback);
+    const QStringList valid = kind == QLatin1String("view") ? QStringList{QStringLiteral("grid"), QStringLiteral("fan"), QStringLiteral("list")} : QStringList{QStringLiteral("name"), QStringLiteral("dateAdded"), QStringLiteral("dateModified"), QStringLiteral("dateCreated"), QStringLiteral("type")};
+    return valid.contains(value) ? value : fallback;
+}
+
+void DockBackend::setFolderPreference(const QString &path, const QString &kind, const QString &value)
+{
+    if (path.isEmpty() || (kind != QLatin1String("view") && kind != QLatin1String("sort"))) return;
+    const QStringList valid = kind == QLatin1String("view") ? QStringList{QStringLiteral("grid"), QStringLiteral("fan"), QStringLiteral("list")} : QStringList{QStringLiteral("name"), QStringLiteral("dateAdded"), QStringLiteral("dateModified"), QStringLiteral("dateCreated"), QStringLiteral("type")};
+    if (!valid.contains(value)) return;
+    const auto key = QString::fromLatin1(QCryptographicHash::hash(QDir::cleanPath(path).toUtf8(), QCryptographicHash::Sha256).toHex());
+    KConfigGroup group(m_config, "FolderPreferences");
+    group.writeEntry(key + QLatin1Char('_') + kind, value);
+    group.sync();
+}
+
+QString DockBackend::defaultFileManagerName() const
+{
+    const auto service = KApplicationTrader::preferredService(QStringLiteral("inode/directory"));
+    return service && !service->name().isEmpty() ? service->name() : tr("File Manager");
+}
+
 QVariantList DockBackend::folderContents(const QString &path) const
 {
     QVariantList result;
@@ -604,6 +633,10 @@ QVariantList DockBackend::folderContents(const QString &path) const
         QDir::Name | QDir::IgnoreCase | QDir::DirsFirst);
     for (const auto &entry : entries)
         result.append(QVariantMap{{"name", entry.fileName()}, {"url", QUrl::fromLocalFile(entry.absoluteFilePath())},
+            {"dateAdded", entry.birthTime().toMSecsSinceEpoch()},
+            {"dateModified", entry.lastModified().toMSecsSinceEpoch()},
+            {"dateCreated", entry.birthTime().toMSecsSinceEpoch()},
+            {"type", entry.isDir() ? QStringLiteral("folder") : entry.suffix().toLower()},
             {"icon", QString::fromLatin1(entry.absoluteFilePath().toUtf8().toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals))}});
     return result;
 }

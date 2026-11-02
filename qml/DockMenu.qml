@@ -5,6 +5,7 @@ import QtQuick.Templates as T
 
 T.Menu {
     id: menu
+    property bool shown: true
     property bool showPointer: false
     property Item pointerTarget: null
     property bool nativeWindow: true
@@ -81,7 +82,7 @@ T.Menu {
     closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
     palette.windowText: "#f5f5f5"
     delegate: DockMenuItem {
-        shown: !subMenu || subMenu.enabled
+        shown: !subMenu || (subMenu.enabled && subMenu.shown !== false)
     }
     Component.onCompleted: {
         updatePopupType()

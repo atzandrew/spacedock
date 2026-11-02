@@ -909,17 +909,18 @@ Item {
                         Qt.callLater(root.refreshDelegateRevision)
                         geometryPublish.restart()
                     }
-                    TaskMenu {
-                        id: menu
-                        dock: root
-                        taskItem: task
-                        anchor: menuAnchor
-                    }
                     FolderView {
                         id: folderView
                         dock: root
                         taskItem: task
                         anchor: menuAnchor
+                    }
+                    TaskMenu {
+                        id: menu
+                        dock: root
+                        taskItem: task
+                        anchor: menuAnchor
+                        targetFolderView: folderView
                     }
                     AppImageSetupMenu {
                         dock: root

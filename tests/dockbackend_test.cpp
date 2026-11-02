@@ -54,6 +54,25 @@ public:
 class DockBackendTest : public QObject {
     Q_OBJECT
 private slots:
+    void folderPreferencesPersist() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const QString configPath = directory.filePath("dockrc");
+        QQmlEngine engine;
+        {
+            DockBackend backend(&engine, true, nullptr, KSharedConfig::openConfig(configPath));
+            QCOMPARE(backend.folderPreference("/tmp/one", "view"), QString("grid"));
+            backend.setFolderPreference("/tmp/one", "view", "fan");
+            backend.setFolderPreference("/tmp/one", "sort", "type");
+        }
+        KConfig saved(configPath, KConfig::SimpleConfig);
+        const auto key = QString::fromLatin1(QCryptographicHash::hash(QByteArray("/tmp/one"), QCryptographicHash::Sha256).toHex());
+        QCOMPARE(KConfigGroup(&saved, "FolderPreferences").readEntry(key + "_view", QString()), QString("fan"));
+        DockBackend restored(&engine, true, nullptr, KSharedConfig::openConfig(configPath));
+        QCOMPARE(restored.folderPreference("/tmp/one", "view"), QString("fan"));
+        QCOMPARE(restored.folderPreference("/tmp/one", "sort"), QString("type"));
+        QCOMPARE(restored.folderPreference("/tmp/two", "view"), QString("grid"));
+    }
     void folderDropsAndContents() {
         QTemporaryDir directory;
         QVERIFY(directory.isValid());

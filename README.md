@@ -27,11 +27,10 @@ This tool is in beta and **will** have bugs! Please report them.
 * Real-time dock scaling
 * Icon label and image customization
 * AppImage handling/workaround
-* Folder grid view with drag-out
+* Folder fan, list, and grid views with sorting and drag-out
 
 ### Features in development
 
-* Folder fanning view
 * Application launcher
 * Themes, including flat design
 * Better DPI scaling (developed on 1.5x scale; other variations need testing)

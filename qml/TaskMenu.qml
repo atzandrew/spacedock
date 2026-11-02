@@ -1,22 +1,26 @@
 import QtQuick
 
-// Owns task actions, artwork-relative placement, and one root-menu hold.
+// Owns task actions, artwork-relative placement, and one root-taskMenuRoot hold.
 DockMenu {
     required property var dock
     required property var taskItem
     required property Item anchor
-    id: menu
+    property var targetFolderView: null
+    id: taskMenuRoot
     objectName: "taskMenu"
-    placement: Item { objectName: "dockMenuPlacement"; parent: menu.anchor }
+    placement: Item { objectName: "dockMenuPlacement"; parent: taskMenuRoot.anchor }
     parent: placement
     overlap: 0
     showPointer: true
     pointerTarget: anchor
     property var appEntries: []
+    property bool isFolder: false
     function openForIcon() {
         appEntries = dockBackend.contextEntries(taskItem.index)
+        isFolder = !!dockBackend.folderPath(taskItem.index)
+        if (isFolder && targetFolderView) targetFolderView.loadPreferences()
         // Hold first: the popup's input grab reports the pointer leaving,
-        // which must not start moving icons before the menu is placed.
+        // which must not start moving icons before the taskMenuRoot is placed.
         acquireDock()
         positionAtIcon()
         open()
@@ -25,7 +29,7 @@ DockMenu {
     function positionAtIcon() { placeAbove(anchor, dock.width) }
     Connections {
         target: anchor
-        function onArtworkBoundsChanged() { if (menu.visible) menu.positionAtIcon() }
+        function onArtworkBoundsChanged() { if (taskMenuRoot.visible) taskMenuRoot.positionAtIcon() }
     }
     onHeightChanged: if (visible) positionAtIcon()
     onWidthChanged: if (visible) positionAtIcon()
@@ -46,14 +50,14 @@ DockMenu {
     onClosed: releaseDock()
     Component.onDestruction: releaseDock()
     Instantiator {
-        model: menu.appEntries.filter(entry => entry.section === "actions")
+        model: taskMenuRoot.appEntries.filter(entry => entry.section === "actions")
         delegate: DockMenuItem {
             required property var modelData
             text: modelData.text
             onTriggered: dockBackend.triggerContextAction(modelData.token)
         }
-        onObjectAdded: (index, object) => menu.insertItem(index, object)
-        onObjectRemoved: (index, object) => menu.removeItem(object)
+        onObjectAdded: (index, object) => taskMenuRoot.insertItem(index, object)
+        onObjectRemoved: (index, object) => taskMenuRoot.removeItem(object)
     }
     DockMenu {
         id: recentMenu
@@ -62,7 +66,7 @@ DockMenu {
         enabled: recentItems.count > 0
         Instantiator {
             id: recentItems
-            model: menu.appEntries.filter(entry => entry.section === "recent")
+            model: taskMenuRoot.appEntries.filter(entry => entry.section === "recent")
             delegate: DockMenuItem {
                 required property var modelData
                 text: modelData.text
@@ -73,7 +77,7 @@ DockMenu {
         }
     }
     DockMenuSeparator {
-        visible: menu.appEntries.length > 0
+        visible: taskMenuRoot.appEntries.length > 0
         height: visible ? implicitHeight : 0
     }
     DockMenuItem {
@@ -91,10 +95,78 @@ DockMenu {
     }
     DockMenuItem {
         text: qsTr("Open New Window")
-        shown: taskItem.running && !menu.appEntries.some(entry => entry.section === "actions")
+        shown: taskItem.running && !taskMenuRoot.appEntries.some(entry => entry.section === "actions")
         onTriggered: dockBackend.taskAction(taskItem.index, "new")
     }
     DockMenuSeparator {}
+    DockMenuItem {
+        text: qsTr("Sort by")
+        enabled: false
+        shown: taskMenuRoot.isFolder
+    }
+    DockMenuItem {
+        objectName: "folderSort_name"
+        text: qsTr("Name")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.sortMode === "name"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("sort", "name")
+    }
+    DockMenuItem {
+        objectName: "folderSort_dateAdded"
+        text: qsTr("Date added")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.sortMode === "dateAdded"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("sort", "dateAdded")
+    }
+    DockMenuItem {
+        objectName: "folderSort_dateModified"
+        text: qsTr("Date modified")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.sortMode === "dateModified"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("sort", "dateModified")
+    }
+    DockMenuItem {
+        objectName: "folderSort_dateCreated"
+        text: qsTr("Date created")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.sortMode === "dateCreated"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("sort", "dateCreated")
+    }
+    DockMenuItem {
+        objectName: "folderSort_type"
+        text: qsTr("File type")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.sortMode === "type"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("sort", "type")
+    }
+    DockMenuSeparator { visible: taskMenuRoot.isFolder; height: visible ? implicitHeight : 0 }
+    DockMenuItem {
+        text: qsTr("View content as")
+        enabled: false
+        shown: taskMenuRoot.isFolder
+    }
+    DockMenuItem {
+        objectName: "folderViewFan"
+        text: qsTr("Fan")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.viewMode === "fan"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("view", "fan")
+    }
+    DockMenuItem {
+        objectName: "folderViewGrid"
+        text: qsTr("Grid")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.viewMode === "grid"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("view", "grid")
+    }
+    DockMenuItem {
+        objectName: "folderViewList"
+        text: qsTr("List")
+        shown: taskMenuRoot.isFolder
+        checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.viewMode === "list"
+        onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("view", "list")
+    }
+    DockMenuSeparator { visible: taskMenuRoot.isFolder }
     DockMenu {
         objectName: "dockOptionsMenu"
         title: qsTr("Options")

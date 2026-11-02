@@ -22,7 +22,7 @@ search for the named property, function or `objectName`.
 | Menu separators | `qml/DockMenuSeparator.qml` |
 | Where the menu opens relative to the icon | `DockMenu.placeAbove()` in `qml/DockMenu.qml` |
 | Where submenus open relative to their row (Wayland anchor, `submenuDrop`) | `src/submenuplacement.h`; `submenuDrop` in `qml/DockMenu.qml` |
-| Folder grid popup | `qml/FolderView.qml`; folder pinning, contents and asynchronous cached thumbnails in `src/dockbackend.cpp` |
+| Folder grid and fan popup | `qml/FolderView.qml`; folder pinning, contents and asynchronous cached thumbnails in `src/dockbackend.cpp` |
 | What's in an app's right-click menu | `qml/TaskMenu.qml` (layout); entries/actions from `DockBackend::contextEntries` / `taskAction` in `src/dockbackend.cpp` |
 | AppImage "choose the running app" menu | `qml/AppImageSetupMenu.qml`; logic in `src/appimagecontroller.cpp` |
 | Drag-to-reorder behavior | `qml/DragController.qml` |
@@ -70,7 +70,7 @@ warning and the last good settings are kept. Validation and defaults:
 | `DockMenu.qml` | Shared menu base: painted panel/arrow, sizing to content, root-menu placement. Used for root menus and submenus. |
 | `DockMenuItem.qml` / `DockMenuSeparator.qml` | Menu rows and separators. Hide rows with `shown`, not `visible`. |
 | `TaskMenu.qml` | An app's right-click menu and its dock hold. |
-| `FolderView.qml` | Themed folder grid popup and its dock hold. |
+| `FolderView.qml` | Themed folder grid and fan popup and its dock hold. |
 | `AppImageSetupMenu.qml` | AppImage association prompt. |
 | `LaunchTestWindow.qml` | Window of the slow-launch test helper (`src/launchtest.cpp`). |
 

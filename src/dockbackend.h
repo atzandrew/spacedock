@@ -65,6 +65,9 @@ public:
     Q_INVOKABLE void openTrash();
     Q_INVOKABLE bool focusIconPicker(const QString &title);
     Q_INVOKABLE QString folderPath(int row) const;
+    Q_INVOKABLE QString folderPreference(const QString &path, const QString &kind) const;
+    Q_INVOKABLE void setFolderPreference(const QString &path, const QString &kind, const QString &value);
+    Q_INVOKABLE QString defaultFileManagerName() const;
     Q_INVOKABLE QVariantList folderContents(const QString &path) const;
     Q_INVOKABLE void startFolderItemDrag(QQuickWindow *window, const QUrl &url);
     Q_INVOKABLE void openFolderItem(const QUrl &url);
