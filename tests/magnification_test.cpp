@@ -128,6 +128,77 @@ private slots:
             }
         }
     }
+    void numericSearchMatchesExpandedGeometry() {
+        const auto numeric = engine.globalObject().property("pointerAtFocus");
+        const auto shape = engine.globalObject().property("shape");
+        const auto anchor = engine.globalObject().property("anchor");
+        const auto scales = engine.evaluate("[1.75,1.5,1.2,1.0]");
+        for (const int count : {1, 7, 16}) {
+            for (const double width : {220.0, 900.0, 1500.0}) {
+                for (const double amount : {0.0, 0.01, 0.5, 1.0}) {
+                    for (const int gap : {-1, 0, count / 2, count - 1}) {
+                        for (const double gapAmount : {0.0, 0.3, 1.0}) {
+                            for (double focus = -3; focus <= count + 2; focus += 0.37) {
+                                const auto expanded = shape.call({count, 48, 10, width - 32,
+                                    focus, amount, scales, gap, gapAmount});
+                                const double expected = (width - expanded.property("width").toNumber()) / 2
+                                    + anchor.call({expanded, focus, 58}).toNumber();
+                                const double actual = numeric.call({count, 48, 10, width - 32,
+                                    width, focus, amount, scales, gap, gapAmount}).toNumber();
+                                QVERIFY2(std::isfinite(actual) && std::abs(actual - expected) < 1e-9,
+                                    qPrintable(QString("count %1 width %2 amount %3 gap %4/%5 focus %6: %7 != %8")
+                                        .arg(count).arg(width).arg(amount).arg(gap).arg(gapAmount)
+                                        .arg(focus).arg(actual, 0, 'g', 16).arg(expected, 0, 'g', 16)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    void adaptiveSearchMatchesBisectionGeometry() {
+        // Reference the original 20-step search through full geometry,
+        // preserving its midpoint and pointer-boundary rounding.
+        const auto reference = engine.evaluate(R"JS((function(count, width, pointerX, amount, scales, gap, weight) {
+            const available = Math.max(0, width - 32);
+            const rest = shape(count, 48, 10, available, 0, 0, scales, gap, weight);
+            if (amount <= 0 || rest.width >= available) return rest;
+            let low = 1 - scales.length;
+            let high = count - 1 - (gap >= 0 ? 1 - weight : 0) + scales.length - 1;
+            for (let i = 0; i < 20; ++i) {
+                const focus = (low + high) / 2;
+                const current = shape(count, 48, 10, available, focus, amount, scales, gap, weight);
+                if ((width - current.width) / 2 + anchor(current, focus, 58) < pointerX) low = focus;
+                else high = focus;
+            }
+            return shape(count, 48, 10, available, (low + high) / 2, amount, scales, gap, weight);
+        }))JS");
+        QVERIFY(reference.isCallable());
+        const auto solve = engine.globalObject().property("layout");
+        const auto scales = engine.evaluate("[1.75,1.5,1.2,1.0]");
+        for (const int count : {1, 7, 16}) {
+            for (const int width : {220, 900, 1500}) {
+                for (const double amount : {0.01, 0.5, 1.0}) {
+                    for (const int gap : {-1, 0, count / 2, count - 1}) {
+                        for (const double weight : {0.0, 0.3, 1.0}) {
+                            for (int step = 0; step <= 17; ++step) {
+                                const double pointer = width * step / 17.0;
+                                const auto expected = reference.call({count, width, pointer, amount, scales, gap, weight});
+                                const auto actual = solve.call({count, 48, 10, width, 16, pointer, amount, scales, gap, weight});
+                                QVERIFY(qAbs(actual.property("width").toNumber() - expected.property("width").toNumber()) < 1e-8);
+                                for (int i = 0; i < count; ++i) {
+                                    const auto a = actual.property("items").property(i);
+                                    const auto b = expected.property("items").property(i);
+                                    QVERIFY(qAbs(a.property("x").toNumber() - b.property("x").toNumber()) < 1e-8);
+                                    QVERIFY(qAbs(a.property("size").toNumber() - b.property("size").toNumber()) < 1e-8);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     void emptyDock() {
         const auto result = geometry(0, 900, 450, 1);
         QCOMPARE(result.property("width").toNumber(), 0);

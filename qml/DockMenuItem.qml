@@ -10,6 +10,19 @@ T.MenuItem {
     // Explicit show/hide that menus can read before they open; `visible`
     // reports false for every row while the popup is closed.
     property bool shown: true
+    property real confirmationOpacity: 1
+    onClicked: {
+        if (!subMenu && menu) {
+            menu.confirmingSelection = true
+            confirmationBlink.restart()
+        }
+    }
+    SequentialAnimation {
+        id: confirmationBlink
+        NumberAnimation { target: control; property: "confirmationOpacity"; to: 0.15; duration: 55 }
+        NumberAnimation { target: control; property: "confirmationOpacity"; to: 1; duration: 65 }
+        PauseAnimation { duration: 60 }
+    }
     visible: shown
     height: shown ? implicitHeight : 0
     leftPadding: 25
@@ -51,9 +64,10 @@ T.MenuItem {
         }
     }
     background: Item {
-        opacity: control.highlighted && control.enabled ? 1 : 0
+        opacity: (control.highlighted && control.enabled || confirmationBlink.running ? 1 : 0) * control.confirmationOpacity
         visible: opacity > 0
         Behavior on opacity {
+            enabled: !confirmationBlink.running
             NumberAnimation { duration: tuning.motion.menuHighlightFadeMs; easing.type: Easing.OutQuad }
         }
         readonly property real selectionHeight: Math.min(height, Math.ceil(label.implicitHeight) + 4)

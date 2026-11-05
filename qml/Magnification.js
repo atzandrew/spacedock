@@ -81,6 +81,57 @@ function anchor(layout, focus, pitch) {
     return center(last)
 }
 
+// The inverse search needs only the pointer coordinate, not delegate objects.
+// Accumulate the same sizes and anchor as shape()/anchor() without allocating
+// the provisional item array on every bisection step.
+function pointerAtFocus(count, baseSize, spacing, available, screenWidth, focus, amount, scales, gapIndex, gapAmount) {
+    const closed = gapIndex >= 0 ? 1 - gapAmount : 0
+    const occupied = count - closed
+    const baseWidth = Math.max(0, occupied * baseSize + (occupied - 1) * spacing)
+    let extra = 0
+    let x = 0
+    let previousPosition = 0
+    let previousBase = 0
+    let previousExtra = 0
+    let havePrevious = false
+    let found = false
+    let anchorBase = 0
+    let anchorExtra = 0
+    for (let i = 0; i < count; ++i) {
+        const position = i - (i > gapIndex && gapIndex >= 0 ? closed : 0)
+            - (i === gapIndex ? closed / 2 : 0)
+        const growth = baseSize * amount * (sample(scales, Math.abs(position - focus)) - 1)
+        const weight = i === gapIndex ? gapAmount : 1
+        if (weight > 0) {
+            const centerBase = x + baseSize * weight / 2
+            const centerExtra = extra + growth * weight / 2
+            if (!found && focus <= position) {
+                if (havePrevious) {
+                    const fraction = (focus - previousPosition) / (position - previousPosition)
+                    anchorBase = previousBase + (centerBase - previousBase) * fraction
+                    anchorExtra = previousExtra + (centerExtra - previousExtra) * fraction
+                } else {
+                    anchorBase = centerBase + (focus - position) * (baseSize + spacing)
+                    anchorExtra = centerExtra
+                }
+                found = true
+            }
+            previousPosition = position
+            previousBase = centerBase
+            previousExtra = centerExtra
+            havePrevious = true
+        }
+        x += (baseSize + spacing) * weight
+        extra += growth * weight
+    }
+    if (!found && havePrevious) {
+        anchorBase = previousBase + (focus - previousPosition) * (baseSize + spacing)
+        anchorExtra = previousExtra
+    }
+    const fit = baseWidth > available ? 0 : extra > 0 ? Math.min(1, (available - baseWidth) / extra) : 1
+    return (screenWidth - Math.max(0, x - spacing + extra * fit)) / 2 + anchorBase + anchorExtra * fit
+}
+
 function layout(count, baseSize, spacing, screenWidth, padding, pointerX, amount, scales, gapIndex = -1, gapAmount = 1) {
     const available = Math.max(0, screenWidth - padding * 2)
     if (count === 0) return {items: [], width: 0, focus: -1}
@@ -91,10 +142,47 @@ function layout(count, baseSize, spacing, screenWidth, padding, pointerX, amount
     const radius = scales.length - 1
     let low = -radius
     let high = count - 1 - (gapIndex >= 0 ? 1 - gapAmount : 0) + radius
+    const origin = low
+    const end = high
+    const cellWidth = (end - origin) / 1048576 // the original 20-step search grid
+    let lowPointer = pointerAtFocus(count, baseSize, spacing, available, screenWidth, low, amount, scales, gapIndex, gapAmount)
+    let highPointer = pointerAtFocus(count, baseSize, spacing, available, screenWidth, high, amount, scales, gapIndex, gapAmount)
+    if (pointerX <= lowPointer)
+        return shape(count, baseSize, spacing, available, low + cellWidth / 2, amount, scales, gapIndex, gapAmount)
+    if (pointerX >= highPointer)
+        return shape(count, baseSize, spacing, available, high - cellWidth / 2, amount, scales, gapIndex, gapAmount)
+    // Find the inverse quickly, then validate its cell on the original search
+    // grid. Keeping that cell's midpoint preserves pointer hit-test boundaries.
+    for (let iteration = 0; iteration < 8; ++iteration) {
+        const fraction = Math.max(0.1, Math.min(0.9, (pointerX - lowPointer) / (highPointer - lowPointer)))
+        const focus = low + (high - low) * fraction
+        const pointer = pointerAtFocus(count, baseSize, spacing, available, screenWidth, focus, amount, scales, gapIndex, gapAmount)
+        if (Math.abs(pointer - pointerX) <= 0.000001) {
+            let cellLow = origin + Math.floor((focus - origin) / cellWidth) * cellWidth
+            let cellPointer = pointerAtFocus(count, baseSize, spacing, available, screenWidth, cellLow, amount, scales, gapIndex, gapAmount)
+            if (pointerX <= cellPointer) {
+                cellLow -= cellWidth
+                cellPointer = pointerAtFocus(count, baseSize, spacing, available, screenWidth, cellLow, amount, scales, gapIndex, gapAmount)
+            }
+            const cellHighPointer = pointerAtFocus(count, baseSize, spacing, available, screenWidth, cellLow + cellWidth, amount, scales, gapIndex, gapAmount)
+            if (cellLow >= origin && cellLow + cellWidth <= end && cellPointer < pointerX && pointerX <= cellHighPointer)
+                return shape(count, baseSize, spacing, available, cellLow + cellWidth / 2, amount, scales, gapIndex, gapAmount)
+            break
+        }
+        if (pointer < pointerX) {
+            low = focus
+            lowPointer = pointer
+        } else {
+            high = focus
+            highPointer = pointer
+        }
+    }
+    // Unusual curves retain the original search and its precision.
+    low = origin
+    high = end
     for (let iteration = 0; iteration < 20; ++iteration) {
         const focus = (low + high) / 2
-        const current = shape(count, baseSize, spacing, available, focus, amount, scales, gapIndex, gapAmount)
-        const pointer = (screenWidth - current.width) / 2 + anchor(current, focus, baseSize + spacing)
+        const pointer = pointerAtFocus(count, baseSize, spacing, available, screenWidth, focus, amount, scales, gapIndex, gapAmount)
         if (pointer < pointerX) low = focus
         else high = focus
     }

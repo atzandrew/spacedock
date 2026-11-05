@@ -311,7 +311,7 @@
     "hiddenScale": 0.8
   },
   "motion": {
-    "menuHighlightFadeMs": 100,
+    "menuHighlightFadeMs": 125,
     "partingDurationMs": 234,
     "dragPartingDelayMs": 1000
   }

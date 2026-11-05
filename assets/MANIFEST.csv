@@ -1,6 +1,8 @@
 path,origin,license
 assets/icons/appimage_closed.png,User-provided AppImage placeholder artwork,User permission for use in this project
 assets/icons/appimage_open.png,User-provided AppImage placeholder artwork,User permission for use in this project
+assets/icons/trash_empty.png,User-provided trash artwork,License not yet specified
+assets/icons/trash_full.png,User-provided trash artwork,License not yet specified
 assets/images/spacedock.png,Project artwork,License not yet specified
 assets/images/spacedock_screenshot1.png,Project demonstration screenshot,License not yet specified
 assets/images/spacedock_screenshot2.png,Project demonstration screenshot,License not yet specified

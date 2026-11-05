@@ -165,7 +165,7 @@ Item {
         }
     }
     readonly property int hoveredIndex: {
-        if (!pointerInside || openMenus > 0 || pressedTask >= 0 || dragging || appDrop.containsDrag || externalDropControl.committing || pointerX < viewport.x || pointerX > viewport.x + viewport.width)
+        if (!pointerInside || openMenus > 0 || menuPointerReconcilePending || pressedTask >= 0 || dragging || appDrop.containsDrag || externalDropControl.committing || layoutInput.pointerX < viewport.x || layoutInput.pointerX > viewport.x + viewport.width)
             return -1
         let best = -1
         let distance = Infinity
@@ -173,7 +173,7 @@ Item {
             const item = geometry.items[i]
             const left = viewport.x + item.x - viewport.contentX
             if (left + item.size <= viewport.x || left >= viewport.x + viewport.width) continue
-            const next = Math.abs(pointerX - left - item.size / 2)
+            const next = Math.abs(layoutInput.pointerX - left - item.size / 2)
             if (next < distance) { best = i; distance = next }
         }
         return best
@@ -198,6 +198,28 @@ Item {
     }
     property real pointerX: width / 2
     property bool pointerInside: false
+    // Opt-in profiling workload; real pointer observations must not interrupt it.
+    property bool profileHoverRunning: false
+    property real profileHoverPeriodMs: 4000
+    property int profileHoverObservations: 0
+    FrameAnimation {
+        running: root.profileHoverRunning
+        onTriggered: {
+            const next = root.width / 2 + root.edgeWidth * 0.4
+                * Math.sin(elapsedTime * 2000 * Math.PI / root.profileHoverPeriodMs)
+            if (root.profileHoverObservations > 0) {
+                const previous = root.pointerX
+                for (let i = 1; i <= root.profileHoverObservations; ++i) {
+                    const x = previous + (next - previous) * i / root.profileHoverObservations
+                    root.observePointer(root.dockPresentationPoint(x, root.iconBottom - 1), true, true)
+                }
+            } else {
+                root.pointerInside = true
+                root.pointerX = next
+            }
+        }
+    }
+    function dockPresentationPoint(x, y) { return presentation.mapToItem(root, x, y) }
     property bool trashConfirmationPending: false
     property int openMenus: 0
     property var activeFolderView: null
@@ -233,14 +255,22 @@ Item {
     // Wayland places a menu once, when it opens, so the icon layout must not
     // move while one is open: freeze magnification exactly where it is.
     function acquireMenuHold() {
-        if (openMenus++ === 0) { motion.stop(); menuPointerMotion.stop(); menuPointerReconcilePending = false }
+        if (openMenus++ === 0) {
+            motion.stop(); menuPointerMotion.stop(); pointerCoalescer.stop(); menuPointerReconcilePending = false
+            applyLayoutInput()
+            // Task menu anchors remap lazily; settle them where icons froze.
+            for (let i = 0; i < tasks.count; ++i) {
+                const task = tasks.itemAt(i)
+                if (task) task.syncMenuAnchor()
+            }
+        }
     }
     function releaseMenuHold() {
+        if (openMenus === 1) menuPointerReconcilePending = true
         openMenus = Math.max(0, openMenus - 1)
         // Destruction may precede closed. Reconcile after delegates/input settle,
         // querying the system cursor because native grabs retain stale hover.
         if (openMenus === 0) {
-            menuPointerReconcilePending = true
             if (!trashConfirmationPending) Qt.callLater(root.refreshPointer)
         }
     }
@@ -250,6 +280,22 @@ Item {
         if (openMenus === 0) resumeMagnification()
     }
     property real amount: 0
+    // The layout's inputs. Entering and leaving change both pointerX and
+    // amount each frame; solving the layout once for both halves that work.
+    property var layoutInput: ({pointerX: 0, amount: 0})
+    property bool layoutInputPending: false
+    onPointerXChanged: scheduleLayoutInput()
+    onAmountChanged: scheduleLayoutInput()
+    function scheduleLayoutInput() {
+        if (layoutInputPending) return
+        layoutInputPending = true
+        Qt.callLater(applyLayoutInput)
+    }
+    function applyLayoutInput() {
+        layoutInputPending = false
+        if (layoutInput.pointerX !== pointerX || layoutInput.amount !== amount)
+            layoutInput = {pointerX: pointerX, amount: amount}
+    }
     property real transitionFrom: 0
     property real transitionTo: 0
     readonly property bool magnificationFits: Magnification.canMagnify(tasks.count + 1, layout.iconSize,
@@ -258,15 +304,21 @@ Item {
             + (feedbackSettings.bounceEnabled ? feedbackSettings.bounceHeight : 0)
             + (tooltipSettings.enabled ? tooltipSettings.height + tooltipSettings.gap + tooltipSettings.margin : 0)) <= height
     readonly property bool magnifying: magnification.enabled && magnificationFits && pointerInside
-    readonly property var placementGeometry: addGroupGap(Magnification.layout(dragging ? tasks.count : tasks.count + 1, layout.iconSize, layout.spacing,
-        width - groupGap, layout.padding, pointerX - groupGap / 2, amount, magnification.scaleSamples),
-        groupBoundary ? groupBoundary.right.index - (dragging && dragFrom < groupBoundary.right.index ? 1 : 0) : 0)
-    readonly property var insertionGeometry: Magnification.insertionLayout(tasks.count + 1 + (externalDropControl.slot >= 0 ? 1 : 0), layout.iconSize, layout.spacing,
-        width - groupGap, layout.padding, pointerX - groupGap / 2, amount, magnification.scaleSamples,
-        dragging ? gapSlot : externalDropControl.slot, dragging ? gapAmount : externalDropControl.gapProgress)
-    readonly property var committedGeometry: addGroupGap(Magnification.layout(tasks.count + 1, layout.iconSize, layout.spacing,
-        width - groupGap, layout.padding, pointerX - groupGap / 2, amount, magnification.scaleSamples),
-        groupBoundary ? groupBoundary.right.index : 0)
+    // The resting row (every task plus the trash, no insertion gap). Hovering
+    // needs only this layout, so share it rather than solving it three times.
+    readonly property var restingLayout: Magnification.layout(tasks.count + 1, layout.iconSize, layout.spacing,
+        width - groupGap, layout.padding, layoutInput.pointerX - groupGap / 2, layoutInput.amount, magnification.scaleSamples)
+    readonly property var placementGeometry: dragging
+        ? addGroupGap(Magnification.layout(tasks.count, layout.iconSize, layout.spacing,
+            width - groupGap, layout.padding, layoutInput.pointerX - groupGap / 2, layoutInput.amount, magnification.scaleSamples),
+            groupBoundary ? groupBoundary.right.index - (dragFrom < groupBoundary.right.index ? 1 : 0) : 0)
+        : committedGeometry
+    readonly property var insertionGeometry: externalDropControl.slot < 0 && (!dragging || gapSlot < 0)
+        ? restingLayout
+        : Magnification.insertionLayout(tasks.count + 1 + (externalDropControl.slot >= 0 ? 1 : 0), layout.iconSize, layout.spacing,
+            width - groupGap, layout.padding, layoutInput.pointerX - groupGap / 2, layoutInput.amount, magnification.scaleSamples,
+            dragging ? gapSlot : externalDropControl.slot, dragging ? gapAmount : externalDropControl.gapProgress)
+    readonly property var committedGeometry: addGroupGap(restingLayout, groupBoundary ? groupBoundary.right.index : 0)
     readonly property var geometry: externalDropControl.committing
         ? {items: committedGeometry.items,
             width: externalDropControl.commitWidth + (committedGeometry.width - externalDropControl.commitWidth) * externalDropControl.commitProgress}
@@ -355,7 +407,8 @@ Item {
         }
     }
 
-    function observePointer(position, refresh = false) {
+    function observePointer(position, refresh = false, simulated = false) {
+        if (profileHoverRunning && !simulated) return
         position = presentation.mapFromItem(root, position.x, position.y)
         if (startingUp || shuttingDown || hideRequested || trashConfirmationPending) { pointerInside = false; return }
         if (openMenus > 0) return
@@ -405,10 +458,35 @@ Item {
     }
     onHoverAreasChanged: requestInputUpdate()
 
+    // Mice can report several motions per frame, and each one re-evaluates the
+    // magnified layout. Apply only the latest hover motion, once per frame.
+    // Enter, leave, drags, presses, and menus stay immediate.
+    property point pendingPointer
+    FrameAnimation {
+        id: pointerCoalescer
+        onTriggered: root.flushPointer()
+    }
+    function flushPointer() {
+        if (!pointerCoalescer.running) return
+        pointerCoalescer.stop()
+        observePointer(pendingPointer)
+    }
+    onPressedTaskChanged: flushPointer()
     HoverHandler {
         id: pointer
-        onPointChanged: root.observePointer(point.position)
-        onHoveredChanged: root.observePointer(point.position)
+        onPointChanged: {
+            if (root.dragging || !hovered) {
+                pointerCoalescer.stop()
+                root.observePointer(point.position)
+                return
+            }
+            root.pendingPointer = point.position
+            if (!pointerCoalescer.running) pointerCoalescer.start()
+        }
+        onHoveredChanged: {
+            pointerCoalescer.stop()
+            root.observePointer(point.position)
+        }
     }
     FrameAnimation {
         id: motion
@@ -467,7 +545,7 @@ Item {
         ].map(point => presentation.mapToItem(root, point.x, point.y))
         dockBackend.setInputRegion(dockWindow, rectangles, polygon)
     }
-    Component.onCompleted: { dockBackend.trackDragPointer(dockWindow); requestInputUpdate() }
+    Component.onCompleted: { applyLayoutInput(); dockBackend.trackDragPointer(dockWindow); requestInputUpdate() }
     onWidthChanged: requestInputUpdate()
     onHeightChanged: requestInputUpdate()
     onLayoutChanged: requestInputUpdate()
@@ -663,275 +741,20 @@ Item {
                 }
                 onItemAdded: { externalDropControl.modelChanged(); root.delegateRevision++; root.requestInputUpdate(); Qt.callLater(root.synchronizeFeedback) }
                 onItemRemoved: { externalDropControl.modelChanged(); root.delegateRevision++; root.requestInputUpdate(); Qt.callLater(root.synchronizeFeedback) }
-                delegate: Item {
-                    id: task
-                    objectName: "taskDelegate"
-                    required property int index
-                    required property string appName
-                    required property string appKey
-                    onAppKeyChanged: {
-                        if (root.dragging && root.dragFrom === index && appKey !== dragControl.dragAppKey)
-                            root.cancelReorder()
-                    }
-                    required property bool running
-                    required property bool pinned
-                    required property bool launching
-                    required property bool attention
-                    required property bool active
-                    required property bool needsAppImageSetup
-                    readonly property bool loading: launching && !running && !active
-                    readonly property bool launchFeedback: bounce.playing && bounce.reason === "launch"
-                    readonly property real bounceOffset: bounce.offset
-                    onBounceOffsetChanged: root.requestInputUpdate()
-                    readonly property var bounce: root.bounceFor(appKey)
-                    onBounceChanged: Qt.callLater(root.synchronizeFeedback)
-                    onLoadingChanged: Qt.callLater(root.synchronizeFeedback)
-                    // Keep attention edges distinct even if clear/re-request
-                    // arrives in one event turn; lifecycle replacements coalesce.
-                    onAttentionChanged: root.synchronizeFeedback()
-                    onActiveChanged: Qt.callLater(root.synchronizeFeedback)
-                    onRunningChanged: Qt.callLater(root.synchronizeFeedback)
-                    Component.onCompleted: {
-                        Qt.callLater(root.synchronizeFeedback)
-                    }
-                    property real folderOpenProgress: folderView.visible ? 1 : 0
-                    Behavior on folderOpenProgress {
-                        NumberAnimation { duration: root.partingDurationMs; easing.type: Easing.OutCubic }
-                    }
-                    readonly property string iconUrl: "image://tasks/" + dockBackend.revision + "/" + index
-                    // The shared gap progress interpolates compact and parted
-                    // positions together; no second delegate animation chases it.
-                    readonly property real visualSlot: root.dragging ? dragControl.slotFor(index)
-                        : index + (!externalDropControl.committing && externalDropControl.slot >= 0 && index >= externalDropControl.slot ? 1 : 0)
-                    readonly property var commitStart: externalDropControl.commitPositions[appKey]
-                    readonly property var closeStart: closeAnimation.positions[appKey]
-                    opacity: externalDropControl.committing
-                        ? commitStart ? commitStart.opacity + (1 - commitStart.opacity) * externalDropControl.commitProgress
-                            : externalDropControl.commitProgress
-                        : 1
-                    Behavior on x {
-                        enabled: !root.dragging && !externalDropControl.committing && externalDropControl.gapProgress === 1 && externalDropControl.acceptedDrag
-                        NumberAnimation { duration: root.partingDurationMs; easing.type: Easing.OutCubic }
-                    }
-                    readonly property var placement: {
-                        const slot = Math.max(0, Math.min(root.geometry.items.length - 1, visualSlot))
-                        const lower = Math.floor(slot)
-                        const a = root.geometry.items[lower] || {x: 0, size: root.layout.iconSize}
-                        const b = root.geometry.items[Math.ceil(slot)] || a
-                        const progress = slot - lower
-                        return {x: a.x + (b.x - a.x) * progress, size: a.size + (b.size - a.size) * progress}
-                    }
-                    readonly property bool floating: root.dragging && root.dragFrom === index
-                    readonly property real finalOrigin: (root.width - Math.min(root.width, root.committedGeometry.width + 2 * root.layout.padding)) / 2 + root.layout.padding
-                    readonly property real commitX: commitStart
-                        ? commitStart.x + (finalOrigin + placement.x - viewport.contentX - commitStart.x) * externalDropControl.commitProgress
-                            - viewport.x + viewport.contentX
-                        : finalOrigin + placement.x - viewport.x
-                    x: floating ? root.floatingLeft - viewport.x + viewport.contentX
-                        : externalDropControl.committing ? commitX
-                        : closeAnimation.active && closeStart
-                            ? closeStart.x + (viewport.x + placement.x - viewport.contentX - closeStart.x) * closeAnimation.progress - viewport.x + viewport.contentX
-                            : placement.x
-                    z: floating ? 1 : 0
-                    onXChanged: root.requestInputUpdate()
-                    onYChanged: root.requestInputUpdate()
-                    y: floating ? root.floatingTop : root.iconBottom - height
-                    width: floating ? root.floatingSize
-                        : externalDropControl.committing && commitStart
-                            ? commitStart.size + (placement.size - commitStart.size) * externalDropControl.commitProgress
-                            : closeAnimation.active && closeStart
-                                ? closeStart.size + (placement.size - closeStart.size) * closeAnimation.progress
-                            : placement.size
-                    height: width
-                    TaskArtwork {
-                        id: icon
-                        objectName: "taskArtwork"
-                        width: task.width
-                        height: task.height
-                        y: task.floating ? 0 : -task.bounceOffset
-                        visible: !(task.floating && dragControl.handedOff) && !appImageTransition.covers(task)
-                        // Qt Quick applies the window's device pixel ratio to image requests.
-                        sourceSize: Qt.size(Math.ceil(tuning.artworkSize * root.magnification.scaleSamples[0]),
-                            Math.ceil(tuning.artworkSize * root.magnification.scaleSamples[0]))
-                        source: task.iconUrl
-                        grayscaleSource: "image://tasks/gray/" + dockBackend.revision + "/" + task.index
-                        grayscaleProgress: task.folderOpenProgress
-                        opacity: (task.floating && dragControl.removing ? 1 - dragControl.removalProgress
-                            : click.pressed && !task.floating ? 0.55 : 1) * (1 - 0.2 * task.folderOpenProgress)
-                        placeholder: task.needsAppImageSetup
-                        opened: task.needsAppImageSetup && dockBackend.appImageSetupPending
-                            && dockBackend.appImageSetupKey === task.appKey
-                        duration: root.partingDurationMs
-                    }
-                    Rectangle {
-                        objectName: "removalCue"
-                        visible: task.floating && dragControl.removalReady
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: -height - 6
-                        width: removeLabel.implicitWidth + 16
-                        height: removeLabel.implicitHeight + 8
-                        radius: 5
-                        color: "#dd242424"
-                        Text { id: removeLabel; anchors.centerIn: parent; text: qsTr("Remove"); color: "white" }
-                    }
-                    readonly property real appImageOpenProgress: icon.openProgress
-                    // Reuse the themed icon; no reference artwork or shader needed.
-                    Item {
-                        visible: !task.floating && !appImageTransition.covers(task)
-                        x: task.needsAppImageSetup ? -task.width * 0.25 : 0
-                        y: task.height
-                        width: task.width * (task.needsAppImageSetup ? 1.5 : 1)
-                        height: root.layout.iconBaselineInset - shelf.lip
-                        clip: true
-                        opacity: root.layout.reflectionOpacity
-                        TaskArtwork {
-                            x: task.needsAppImageSetup ? task.width * 0.25 : 0
-                            width: task.width
-                            height: task.height
-                            y: task.bounceOffset
-                            sourceSize: icon.sourceSize
-                            source: task.iconUrl
-                            grayscaleSource: "image://tasks/gray/" + dockBackend.revision + "/" + task.index
-                            grayscaleProgress: task.folderOpenProgress
-                            mirrorVertically: true
-                            opacity: (click.pressed && !task.floating ? 0.55 : 1) * (1 - 0.2 * task.folderOpenProgress)
-                            placeholder: task.needsAppImageSetup
-                            openProgress: icon.openProgress
-                            animateOpening: false
-                        }
-                    }
-                    Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        y: task.height + root.layout.iconBaselineInset - shelf.lip - 7
-                        width: 12; height: 6; radius: 3
-                        gradient: Gradient {
-                            GradientStop { position: 0; color: "#00c4efff" }
-                            GradientStop { position: 0.5; color: "#ddc4efff" }
-                            GradientStop { position: 1; color: "#00c4efff" }
-                        }
-                        visible: !task.floating && (task.running || task.loading || task.launchFeedback || task.attention) && root.layout.showIndicators
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: 5; height: 3; radius: 1.5
-                            color: task.attention && !task.active ? "#ffd58a"
-                                : task.loading || (task.launchFeedback && !task.running) ? "#9bcaff" : "#f2faff"
-                        }
-                    }
-                    MouseArea {
-                        id: click
-                        objectName: "taskMouseArea"
-                        width: task.width
-                        height: task.height + task.bounceOffset
-                        y: -task.bounceOffset
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        preventStealing: true
-                        property point pressPosition: Qt.point(0, 0)
-                        property real grabFractionX: 0
-                        property real grabFractionY: 0
-                        property bool reordered: false
-                        onPressed: mouse => {
-                            if (root.settling) root.cancelReorder()
-                            pressPosition = mapToItem(root, mouse.x, mouse.y)
-                            const position = presentation.mapFromItem(root, pressPosition.x, pressPosition.y)
-                            const artwork = task.mapToItem(presentation, 0, -task.bounceOffset)
-                            grabFractionX = (position.x - artwork.x) / task.width
-                            grabFractionY = (position.y - artwork.y) / task.height
-                            reordered = false
-                        }
-                        onPositionChanged: mouse => {
-                            if (!(pressedButtons & Qt.LeftButton)) return
-                            // Cancellation consumes this physical press. A later
-                            // move must never relift an icon under the same grab.
-                            if (root.settling || (!root.dragging && reordered)) return
-                            // mouse coordinates belong to the moving delegate;
-                            // convert once to stable dock-window coordinates.
-                            const windowPosition = mapToItem(root, mouse.x, mouse.y)
-                            if (!root.dragging && Math.hypot(windowPosition.x - pressPosition.x,
-                                    windowPosition.y - pressPosition.y) >= Qt.styleHints.startDragDistance) {
-                                dragControl.begin(task, windowPosition, grabFractionX, grabFractionY)
-                                root.forceActiveFocus()
-                                reordered = true
-                            }
-                            dragControl.move(windowPosition)
-                        }
-                        onReleased: mouse => dragControl.release(mapToItem(root, mouse.x, mouse.y))
-                        // A native handoff ends the pointer grab; that is not a cancel.
-                        onCanceled: {
-                            dragControl.traceDrop("MouseArea canceled")
-                            if (!dragControl.handedOff && !root.settling) root.cancelReorder()
-                        }
-                        onPressedChanged: root.pressedTask = pressed ? task.index : -1
-                        onClicked: mouse => {
-                            if (reordered) return
-                            if (mouse.button === Qt.RightButton) menu.openForIcon()
-                            else {
-                                if (dockBackend.folderPath(task.index)) folderView.openForIcon()
-                                else {
-                                    if (!task.running && !task.active) bounce.triggerLaunch()
-                                    dockBackend.activate(task.index, tuning.bringAllWindows)
-                                }
-                            }
-                        }
-                    }
-                    // Keep the native popup's parent-control rectangle equal
-                    // to the rendered artwork, rather than the full dock surface.
-                    Item {
-                        id: menuAnchor
-                        objectName: "dockMenuAnchor"
-                        parent: root
-                        readonly property rect artworkBounds: {
-                            // mapToItem reads transforms internally. Observe the
-                            // contributing geometry explicitly for live updates.
-                            const geometry = [task.x, task.y, task.width, task.height,
-                                viewport.x, viewport.y, viewport.contentX,
-                                presentation.x, presentation.y, presentation.scale]
-                            return task.mapToItem(root, Qt.rect(0, -task.bounceOffset, task.width, task.height))
-                        }
-                        x: artworkBounds.x
-                        y: artworkBounds.y
-                        width: artworkBounds.width
-                        height: artworkBounds.height
-                        onArtworkBoundsChanged: geometryPublish.restart()
-                    }
-                    Timer {
-                        id: geometryPublish
-                        interval: 50
-                        onTriggered: if (task.running) dockBackend.publishIconGeometry(task.index, menuAnchor)
-                    }
-                    Connections {
-                        target: dockBackend
-                        function onRevisionChanged() { if (task.running) geometryPublish.restart() }
-                    }
-                    onIndexChanged: {
-                        root.delegateRevision++
-                        // Repeater updates its item lookup after changing the
-                        // delegate indexes during a model row move.
-                        Qt.callLater(root.refreshDelegateRevision)
-                        geometryPublish.restart()
-                    }
-                    FolderView {
-                        id: folderView
-                        dock: root
-                        taskItem: task
-                        anchor: menuAnchor
-                    }
-                    TaskMenu {
-                        id: menu
-                        dock: root
-                        taskItem: task
-                        anchor: menuAnchor
-                        targetFolderView: folderView
-                    }
-                    AppImageSetupMenu {
-                        dock: root
-                        taskItem: task
-                        anchor: menuAnchor
-                    }
+                delegate: TaskDelegate {
+                    dockRoot: root
+                    dockDragControl: dragControl
+                    dockExternalDropControl: externalDropControl
+                    dockCloseAnimation: closeAnimation
+                    dockViewport: viewport
+                    dockPresentation: presentation
+                    dockShelf: shelf
+                    dockAppImageTransition: appImageTransition
                 }
             }
         }
     }
-    Item {
+    TrashItem {
         id: trashIcon
         objectName: "trashIcon"
         parent: icons
@@ -942,37 +765,10 @@ Item {
         y: root.iconBottom - height
         width: closeAnimation.active ? closeAnimation.trashSize + (placement.size - closeAnimation.trashSize) * closeAnimation.progress : placement.size
         height: width
-        TaskArtwork {
-            id: trashArtwork
-            anchors.fill: parent
-            source: dockBackend.trash.full ? "image://tasks/theme/user-trash-full" : "image://tasks/theme/user-trash"
-            sourceSize: Qt.size(Math.ceil(tuning.artworkSize * root.magnification.scaleSamples[0]),
-                                Math.ceil(tuning.artworkSize * root.magnification.scaleSamples[0]))
-            opacity: root.trashHover || trashClick.pressed ? 0.55 : 1
-        }
-        Item {
-            y: trashIcon.height
-            width: trashIcon.width
-            height: root.layout.iconBaselineInset - shelf.lip
-            clip: true
-            opacity: root.layout.reflectionOpacity
-            TaskArtwork {
-                width: trashIcon.width; height: trashIcon.height
-                source: trashArtwork.source; sourceSize: trashArtwork.sourceSize
-                mirrorVertically: true
-                opacity: trashClick.pressed ? 0.55 : 1
-            }
-        }
-        MouseArea {
-            id: trashClick
-            anchors.fill: parent
-            onPressedChanged: root.pressedTask = pressed ? tasks.count : -1
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: mouse => {
-                if (mouse.button === Qt.RightButton) trashMenu.openForIcon()
-                else dockBackend.openTrash()
-            }
-        }
+        dock: root
+        shelfLip: shelf.lip
+        onPressedChanged: pressed => root.pressedTask = pressed ? tasks.count : -1
+        onMenuRequested: trashMenu.openForIcon()
         onXChanged: root.requestInputUpdate()
         onYChanged: root.requestInputUpdate()
         onWidthChanged: root.requestInputUpdate()
@@ -980,11 +776,15 @@ Item {
     Item {
         id: trashMenuAnchor
         parent: root
-        readonly property rect artworkBounds: {
-            const geometry = [trashIcon.x, trashIcon.y, trashIcon.width, trashIcon.height,
-                              viewport.x, viewport.contentX, presentation.y, presentation.scale]
-            return trashIcon.mapToItem(root, Qt.rect(0, 0, trashIcon.width, trashIcon.height))
+        property rect artworkBounds
+        readonly property var observedGeometry: trashMenu.visible
+            ? [trashIcon.x, trashIcon.y, trashIcon.width, trashIcon.height,
+                viewport.x, viewport.contentX, presentation.y, presentation.scale] : []
+        onObservedGeometryChanged: sync()
+        function sync() {
+            artworkBounds = trashIcon.mapToItem(root, Qt.rect(0, 0, trashIcon.width, trashIcon.height))
         }
+        Component.onCompleted: sync()
         x: artworkBounds.x; y: artworkBounds.y
         width: artworkBounds.width; height: artworkBounds.height
     }

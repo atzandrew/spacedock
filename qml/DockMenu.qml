@@ -9,6 +9,11 @@ T.Menu {
     property bool showPointer: false
     property Item pointerTarget: null
     property bool nativeWindow: true
+    property bool confirmingSelection: false
+    onAboutToShow: confirmingSelection = false
+    exit: Transition {
+        PauseAnimation { duration: menu.confirmingSelection ? 180 : 0 }
+    }
     function updatePopupType() {
         if ("popupType" in menu && !visible)
             menu.popupType = nativeWindow ? T.Popup.Window : T.Popup.Item
@@ -20,13 +25,15 @@ T.Menu {
     property real panelScaleOriginY: 0
     readonly property var popupWindow: background ? background.Window.window : null
     property real pointerX: {
+        // Hidden menus skip the mapping and its dependencies; it is
+        // recomputed when they open.
+        if (!menu.visible) return width / 2
         // A compositor can constrain the native popup independently of the
         // requested Menu.x. Map the artwork into the actual painted panel.
         const popupX = popupWindow ? popupWindow.x : 0
         const targetX = pointerTarget ? pointerTarget.x : 0
         const targetWindowX = pointerTarget && pointerTarget.Window.window ? pointerTarget.Window.window.x : 0
         const localX = menu.x
-        const opened = menu.visible
         return pointerTarget && background
             ? background.mapFromItem(pointerTarget, pointerTarget.width / 2, 0).x : width / 2
     }
@@ -68,6 +75,7 @@ T.Menu {
     // padding puts the submenu's last row level with the row it opened from.
     property real submenuDrop: bottomPadding
     function placeAbove(target, dockWidth) {
+        if (typeof target.sync === "function") target.sync()
         // Clamp in dock coordinates, then convert into the target's coordinates.
         // The border is drawn at shadowMargin + 1 from the popup's edge.
         const center = target.x + target.width / 2

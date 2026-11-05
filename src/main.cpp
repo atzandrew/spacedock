@@ -1,14 +1,17 @@
 #include "dockbackend.h"
+#include "hoverbenchmark.h"
 #include "docklifecycle.h"
 #include <QSessionManager>
 #include "tooltipshadow.h"
 #include "tuning.h"
 #include "startupenvironment.h"
 #include "submenuplacement.h"
+#include "translations.h"
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlDebuggingEnabler>
 #include <QQmlContext>
 #include <QCommandLineParser>
 #include <QFileInfo>
@@ -72,9 +75,17 @@ int main(int argc, char **argv)
     app.setDesktopFileName("spacedock");
     app.setOrganizationName("spacedock");
     app.setApplicationVersion("0.1.0");
+    // Install translators before creating any QML or dialogs. Missing catalogs
+    // simply leave the original English strings in place.
+    Translations translations;
+    translations.install(app);
     QCommandLineParser parser;
     parser.setApplicationDescription("A classic-style standalone dock for Plasma Wayland.");
     parser.addHelpOption();
+    parser.addOption({"benchmark-hover", "Sweep magnification automatically and report Qt swap timing for 20 seconds."});
+    parser.addOption({"benchmark-pointer", "Record real pointer delivery and Qt swap timing for 20 seconds."});
+    parser.addOption({"benchmark-hover-period", "Automatic sweep cycle duration in milliseconds (100–60000).", "ms", "4000"});
+    parser.addOption({"benchmark-hover-observations", "Hover-path observations per frame (0 uses direct animation; maximum 64).", "count", "0"});
     parser.addVersionOption();
     parser.addOption({"preview", "Use a regular development window instead of layer shell."});
     parser.addOption({"smoke-test", "Load the UI in preview mode and exit automatically."});
@@ -104,6 +115,12 @@ int main(int argc, char **argv)
         return 1;
     }
     Tuning tuning(tuningPath, nullptr, !preview && !checkReorder);
+    // Opt-in QML profiling: SPACEDOCK_QML_PROFILE=<port> accepts qmlprofiler.
+    if (const int port = qEnvironmentVariableIntValue("SPACEDOCK_QML_PROFILE"); port > 0) {
+        QQmlDebuggingEnabler::enableDebugging(true);
+        QQmlDebuggingEnabler::setServices(QQmlDebuggingEnabler::profilerServices());
+        QQmlDebuggingEnabler::startTcpDebugServer(port, QQmlDebuggingEnabler::DoNotWaitForClient);
+    }
     QQmlApplicationEngine engine;
     std::unique_ptr<QTemporaryDir> checkConfig;
     KSharedConfig::Ptr backendConfig;
@@ -170,6 +187,24 @@ int main(int argc, char **argv)
     engine.rootContext()->setContextProperty("previewMode", preview);
     engine.load(QUrl(preview ? "qrc:/qml/PreviewWindow.qml" : "qrc:/qml/DockWindow.qml"));
     if (engine.rootObjects().isEmpty()) return 1;
+    if (parser.isSet("benchmark-hover") || parser.isSet("benchmark-pointer")) {
+        bool periodOk = false, countOk = false;
+        const int period = parser.value("benchmark-hover-period").toInt(&periodOk);
+        const int count = parser.value("benchmark-hover-observations").toInt(&countOk);
+        if (!periodOk || period < 100 || period > 60000 || !countOk || count < 0 || count > 64) {
+            qCritical() << "Invalid hover benchmark period or observation count";
+            return 1;
+        }
+        auto *content = engine.rootObjects().first()->findChild<QObject *>("dockContent");
+        if (content) {
+            content->setProperty("profileHoverPeriodMs", period);
+            content->setProperty("profileHoverObservations", count);
+        }
+        qInfo() << "hover-benchmark: sweep period ms" << period << "observations per frame" << count;
+        startHoverBenchmark(qobject_cast<QQuickWindow *>(engine.rootObjects().first()),
+                            content,
+                            !parser.isSet("benchmark-pointer"));
+    }
     DockLifecycle lifecycle(engine.rootObjects().first()->findChild<QObject *>("dockContent"));
     QObject::connect(&app, &QGuiApplication::commitDataRequest, &lifecycle,
         [&lifecycle](QSessionManager &) { lifecycle.requestShutdown(); });

@@ -2,6 +2,16 @@
 Type=Application
 Name=spacedock
 Comment=A classic-style dock for Plasma Wayland
+Comment[de]=Ein klassisches Dock für Plasma Wayland
+Comment[es]=Un dock de estilo clásico para Plasma Wayland
+Comment[ja]=Plasma Wayland 向けのクラシックな Dock
+Comment[it]=Un dock in stile classico per Plasma Wayland
+Comment[pl]=Dok w klasycznym stylu dla Plasma Wayland
+Comment[pt_BR]=Um dock de estilo clássico para Plasma Wayland
+Comment[ru]=Док-панель в классическом стиле для Plasma Wayland
+Comment[uk]=Док у класичному стилі для Plasma Wayland
+Comment[zh_CN]=适用于 Plasma Wayland 的经典风格程序坞
+Comment[fr]=Un dock de style classique pour Plasma Wayland
 Exec="@SPACEDOCK_EXEC@"
 Icon=preferences-desktop-theme
 Terminal=false

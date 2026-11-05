@@ -31,7 +31,7 @@ DockMenu {
     readonly property real visualProgress: closing ? closingProgress : openingProgress
     property real openingOriginX: 0
     readonly property real openingOriginY: height + anchor.height / 2 - 5
-    pointerX: visualProgress < 1 ? openingOriginX
+    pointerX: !visible ? width / 2 : visualProgress < 1 ? openingOriginX
         : background.mapFromItem(anchor, anchor.width / 2, 0).x
     panelScale: viewMode === "grid" ? visualProgress : 1
     background.opacity: viewMode === "list" ? visualProgress : 1
@@ -139,12 +139,14 @@ DockMenu {
     readonly property var fanEntries: {
         const shown = sortedEntries.slice(0, 11)
         const remaining = sortedEntries.length - shown.length
-        if (remaining > 0) shown.push({name: qsTr("%1 More in %2").arg(remaining).arg(dockBackend.defaultFileManagerName()), openFolder: true})
+        if (remaining > 0) shown.push({name: qsTr("%n More in %1", "", remaining).arg(dockBackend.defaultFileManagerName()), openFolder: true})
         return shown
     }
     // The production dock spans the screen; previews may need a native popup
     // above their shorter window, so measure the anchor in screen coordinates.
     readonly property real maximumListHeight: {
+        // Only list views use it; skip the per-frame anchor mapping otherwise.
+        if (viewMode !== "list") return 110
         const screen = dock.Window.window ? dock.Window.window.screen : null
         if (!screen || dock.height >= screen.height) return Math.max(110, anchor.y + 5)
         return Math.max(110, anchor.mapToGlobal(0, 0).y - screen.virtualY + 5)

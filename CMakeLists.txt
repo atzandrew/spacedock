@@ -8,10 +8,32 @@ find_package(KF6CoreAddons 6.0 REQUIRED)
 find_package(KF6Service 6.0 REQUIRED)
 find_package(KF6WidgetsAddons 6.0 REQUIRED)
 qt_standard_project_setup()
-qt_add_executable(spacedock src/trashcontroller.cpp src/trashcontroller.h src/imagepicker.cpp src/imagepicker.h src/docklifecycle.cpp src/docklifecycle.h src/main.cpp src/dockbackend.cpp src/dockbackend.h src/appimagestore.cpp src/appimagestore.h src/appimagecontroller.cpp src/appimagecontroller.h src/tooltipshadow.cpp src/tooltipshadow.h src/tuning.cpp src/tuning.h src/submenuplacement.h)
+qt_add_executable(spacedock src/folderservices.cpp src/folderservices.h src/trashcontroller.cpp src/trashcontroller.h src/imagepicker.cpp src/imagepicker.h src/docklifecycle.cpp src/docklifecycle.h src/main.cpp src/dockbackend.cpp src/dockbackend.h src/appimagestore.cpp src/appimagestore.h src/appimagecontroller.cpp src/appimagecontroller.h src/tooltipshadow.cpp src/tooltipshadow.h src/tuning.cpp src/tuning.h src/submenuplacement.h)
 target_link_libraries(spacedock PRIVATE Qt6::Quick Qt6::DBus Qt6::Widgets Qt6::Concurrent KF6::ConfigCore KF6::CoreAddons KF6::Service KF6::WidgetsAddons)
-qt_add_resources(spacedock ui PREFIX "/" FILES qml/Main.qml qml/DockSettings.qml qml/ApplicationSettings.qml qml/AutoHideController.qml qml/ExternalDropController.qml qml/DragController.qml qml/AppImageSetupMenu.qml qml/TaskArtwork.qml qml/AppImageArtworkTransition.qml qml/TaskMenu.qml qml/FolderView.qml qml/DockMenu.qml qml/DockMenuItem.qml qml/DockMenuSeparator.qml qml/DockToolTip.qml qml/Bounce.qml qml/Magnification.js qml/Shelf.qml qml/DockWindow.qml qml/PreviewWindow.qml tuning.json)
-qt_add_resources(spacedock appimage_artwork PREFIX "/" FILES assets/icons/appimage_closed.png assets/icons/appimage_open.png)
+set(DOCK_UI_RESOURCES
+    qml/Main.qml qml/DockSettings.qml qml/ApplicationSettings.qml
+    qml/AutoHideController.qml qml/ExternalDropController.qml qml/DragController.qml
+    qml/AppImageSetupMenu.qml qml/TaskArtwork.qml qml/AppImageArtworkTransition.qml
+    qml/TaskMenu.qml qml/TaskDelegate.qml qml/FolderView.qml qml/TrashItem.qml qml/DockMenu.qml qml/DockMenuItem.qml
+    qml/DockMenuSeparator.qml qml/DockToolTip.qml qml/Bounce.qml qml/Magnification.js
+    qml/Shelf.qml qml/DockWindow.qml qml/PreviewWindow.qml tuning.json)
+set(DOCK_ARTWORK_RESOURCES
+    assets/icons/appimage_closed.png assets/icons/appimage_open.png
+    assets/icons/trash_empty.png assets/icons/trash_full.png)
+qt_add_resources(spacedock ui PREFIX "/" FILES ${DOCK_UI_RESOURCES})
+qt_add_resources(spacedock appimage_artwork PREFIX "/" FILES ${DOCK_ARTWORK_RESOURCES})
+# Translation catalogs are optional; a source-only build needs no Linguist tools.
+file(GLOB DOCK_TRANSLATIONS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/translations/spacedock_*.ts")
+if(DOCK_TRANSLATIONS)
+    find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
+    qt_add_lrelease(spacedock TS_FILES ${DOCK_TRANSLATIONS} OPTIONS -nounfinished
+        QM_FILES_OUTPUT_VARIABLE DOCK_QM_FILES)
+    foreach(qm IN LISTS DOCK_QM_FILES)
+        get_filename_component(qm_name "${qm}" NAME)
+        set_source_files_properties("${qm}" PROPERTIES QT_RESOURCE_ALIAS "${qm_name}")
+    endforeach()
+    qt_add_resources(spacedock translations PREFIX "/translations" FILES ${DOCK_QM_FILES})
+endif()
 include(CTest)
 # Development helper: a real, independently launched Wayland app with a delayed
 # first window. It is intentionally not part of the installed dock package.
@@ -46,6 +68,18 @@ install(FILES assets/MANIFEST.csv DESTINATION ${CMAKE_INSTALL_DATADIR}/spacedock
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    find_package(Qt6 QUIET COMPONENTS LinguistTools)
+    if(TARGET Qt6::lrelease)
+        qt_add_executable(translation-test tests/translation_test.cpp src/translations.h)
+        qt_add_lrelease(translation-test TS_FILES tests/translation_fixture.ts
+            QM_FILES_OUTPUT_VARIABLE translation_fixture_qm)
+        set_source_files_properties(${translation_fixture_qm} PROPERTIES QT_RESOURCE_ALIAS "spacedock_fr_FR.qm")
+        target_include_directories(translation-test PRIVATE src)
+        target_link_libraries(translation-test PRIVATE Qt6::Test Qt6::Qml)
+        qt_add_resources(translation-test translation_fixture PREFIX "/translations" FILES ${translation_fixture_qm})
+        qt_add_resources(translation-test production_translations PREFIX "/translations" FILES ${DOCK_QM_FILES})
+        add_test(NAME translation COMMAND translation-test)
+    endif()
     qt_add_executable(tuning-test tests/tuning_test.cpp src/tuning.cpp src/tuning.h)
     target_include_directories(tuning-test PRIVATE src)
     target_link_libraries(tuning-test PRIVATE Qt6::Test)
@@ -74,6 +108,7 @@ if(BUILD_TESTING)
     # Compile the shared backend once; keep suite fixtures local to their owner.
     add_library(dock-ui-test-support STATIC
         tests/launcher_model.h
+        src/folderservices.cpp src/folderservices.h
         src/trashcontroller.cpp src/trashcontroller.h
         src/imagepicker.cpp src/imagepicker.h
         src/dockbackend.cpp src/dockbackend.h
@@ -86,8 +121,8 @@ if(BUILD_TESTING)
         qt_add_executable(${target} ${source})
         set_target_properties(${target} PROPERTIES AUTOUIC OFF)
         target_link_libraries(${target} PRIVATE dock-ui-test-support)
-        qt_add_resources(${target} ${target}_ui PREFIX "/" FILES qml/Main.qml qml/DockSettings.qml qml/ApplicationSettings.qml qml/AutoHideController.qml qml/ExternalDropController.qml qml/DragController.qml qml/AppImageSetupMenu.qml qml/TaskArtwork.qml qml/AppImageArtworkTransition.qml qml/TaskMenu.qml qml/FolderView.qml qml/DockMenu.qml qml/DockMenuItem.qml qml/DockMenuSeparator.qml qml/DockToolTip.qml qml/Bounce.qml qml/Magnification.js qml/Shelf.qml qml/DockWindow.qml qml/PreviewWindow.qml tuning.json)
-        qt_add_resources(${target} ${target}_artwork PREFIX "/" FILES assets/icons/appimage_closed.png assets/icons/appimage_open.png)
+        qt_add_resources(${target} ${target}_ui PREFIX "/" FILES ${DOCK_UI_RESOURCES})
+        qt_add_resources(${target} ${target}_artwork PREFIX "/" FILES ${DOCK_ARTWORK_RESOURCES})
         add_test(NAME ${test_name} COMMAND ${target})
         set_tests_properties(${test_name} PROPERTIES TIMEOUT 45 ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
     endfunction()

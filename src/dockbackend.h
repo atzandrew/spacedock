@@ -3,6 +3,7 @@
 #include "appimagecontroller.h"
 #include "imagepicker.h"
 #include "trashcontroller.h"
+#include "folderservices.h"
 #include <QQuickImageProvider>
 #include <QQuickItem>
 #include <KSharedConfig>
@@ -85,6 +86,8 @@ public:
     Q_INVOKABLE bool saveApplicationEdit(const QString &key, const QString &name, const QUrl &image, bool restore, const QString &themeIcon = {});
     Q_INVOKABLE QPointF cursorPosition(QQuickWindow *window) const;
     static QUrl applicationLauncher(const QUrl &url);
+    // Benchmark timeline mark; does nothing unless a trace is recording.
+    Q_INVOKABLE void benchmarkMark(const QString &type);
     Q_INVOKABLE void setInputRegion(QQuickWindow *window, const QVariantList &rectangles, const QVariantList &shelfVertices);
     QPixmap icon(int row, QSize size) const;
     QPixmap defaultIcon(int row, QSize size) const;
@@ -163,11 +166,4 @@ public:
 private:
     DockBackend *m_backend;
     QCache<QString, QPixmap> m_cache; // Costs are KiB, bounded to 32 MiB.
-};
-
-// Thumbnail decoding runs on Qt Quick's image-loading thread.
-class FolderThumbnails : public QQuickImageProvider {
-public:
-    FolderThumbnails() : QQuickImageProvider(Image) {}
-    QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override;
 };

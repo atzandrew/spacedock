@@ -18,7 +18,7 @@ spacedock_prefix="$HOME/.local"
 sudo apt-get update
 sudo apt-get install \
     build-essential cmake \
-    qt6-base-dev qt6-declarative-dev \
+    qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools \
     libkf6config-dev libkf6coreaddons-dev libkf6service-dev libkf6widgetsaddons-dev \
     plasma-workspace plasma-desktop qt6-wayland layer-shell-qt \
     qml6-module-org-kde-layershell qml6-module-org-kde-iconthemes \

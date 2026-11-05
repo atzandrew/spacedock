@@ -776,11 +776,11 @@ private slots:
         content->setProperty("openMenus", 0);
         content->setProperty("menuPointerReconcilePending", true);
         const QVariant position = QPointF(target, content->height() - 5);
-        QVERIFY(QMetaObject::invokeMethod(content, "observePointer", Q_ARG(QVariant, position), Q_ARG(QVariant, true)));
+        QVERIFY(QMetaObject::invokeMethod(content, "observePointer", Q_ARG(QVariant, position), Q_ARG(QVariant, true), Q_ARG(QVariant, false)));
         QCOMPARE(content->property("pointerX").toDouble(), target - 50);
         content->setProperty("menuPointerReconcilePending", false);
         // A hover event delivered after the popup closes must not snap to the target.
-        QVERIFY(QMetaObject::invokeMethod(content, "observePointer", Q_ARG(QVariant, position), Q_ARG(QVariant, false)));
+        QVERIFY(QMetaObject::invokeMethod(content, "observePointer", Q_ARG(QVariant, position), Q_ARG(QVariant, false), Q_ARG(QVariant, false)));
         QCOMPARE(content->property("pointerX").toDouble(), target - 50);
         QTest::qWait(250);
         QVERIFY(qAbs(content->property("pointerX").toDouble() - target) < 0.1);
@@ -1180,6 +1180,40 @@ private slots:
             QTRY_COMPARE(content->property("openMenus").toInt(), 0);
             QTRY_VERIFY(content->property("amount").toDouble() < 0.01);
         }
+    }
+    void trashMenuAnchorsToCurrentArtwork() {
+        Tuning tuning(":/tuning.json");
+        QQmlApplicationEngine engine;
+        DockBackend backend(&engine, true);
+        engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
+        engine.addImageProvider("tooltipshadows", new ToolTipShadows);
+        engine.rootContext()->setContextProperty("dockBackend", &backend);
+        engine.rootContext()->setContextProperty("tuning", &tuning);
+        engine.rootContext()->setContextProperty("previewMode", true);
+        engine.load(QUrl("qrc:/qml/PreviewWindow.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        auto *content = window->findChild<QQuickItem *>("dockContent");
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_VERIFY(!content->property("startingUp").toBool());
+        auto *trash = content->findChild<QQuickItem *>("trashIcon");
+        auto *menu = content->findChild<QObject *>("trashMenu");
+        QVERIFY(trash && menu);
+        const auto restingSize = trash->size();
+        const auto center = trash->mapToScene(QPointF(trash->width() / 2, trash->height() / 2)).toPoint();
+        QTest::mouseMove(window, center);
+        QTRY_VERIFY(content->property("amount").toDouble() > 0.99);
+        QVERIFY(trash->width() > restingSize.width());
+        QVERIFY(QMetaObject::invokeMethod(menu, "openForIcon"));
+        QTRY_VERIFY(menu->property("visible").toBool());
+        auto *anchor = qvariant_cast<QQuickItem *>(menu->property("pointerTarget"));
+        QVERIFY(anchor);
+        const auto artwork = trash->mapToItem(content, QRectF(QPointF(), trash->size()));
+        QCOMPARE(anchor->position(), artwork.topLeft());
+        QCOMPARE(anchor->size(), artwork.size());
+        QVERIFY(QMetaObject::invokeMethod(menu, "close"));
+        QTRY_COMPARE(content->property("openMenus").toInt(), 0);
     }
     void removingTaskWithOpenMenuReleasesMagnification() {
         Tuning tuning(":/tuning.json");

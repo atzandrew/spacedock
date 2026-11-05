@@ -166,7 +166,10 @@ DockMenu {
         checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.viewMode === "list"
         onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("view", "list")
     }
-    DockMenuSeparator { visible: taskMenuRoot.isFolder }
+    DockMenuSeparator {
+        visible: taskMenuRoot.isFolder
+        height: taskMenuRoot.isFolder ? implicitHeight : 0
+    }
     DockMenu {
         objectName: "dockOptionsMenu"
         title: qsTr("Options")
@@ -189,6 +192,10 @@ DockMenu {
             text: qsTr("Dock Settings…")
             onTriggered: dock.openSettings()
         }
+    }
+    DockMenuSeparator {
+        visible: taskItem.running
+        height: taskItem.running ? implicitHeight : 0
     }
     DockMenuItem {
         text: qsTr("Close Windows")

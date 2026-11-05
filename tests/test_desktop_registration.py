@@ -28,6 +28,9 @@ with tempfile.TemporaryDirectory(prefix='spacedock registration ') as temporary:
         settings = entry['Desktop Entry']
         assert settings['Exec'] == f'"{(build / binary).resolve()}"'
         if desktop == 'spacedock':
+            assert settings['Comment[fr]'] == 'Un dock de style classique pour Plasma Wayland'
+            for locale in ('de', 'es', 'it', 'ja', 'pl', 'pt_BR', 'ru', 'uk', 'zh_CN'):
+                assert settings[f'Comment[{locale}]'], f'Missing desktop translation: {locale}'
             assert set(settings['X-KDE-Wayland-Interfaces'].split(',')) == {
                 'org_kde_plasma_window_management', 'org_kde_plasma_activation_feedback'}
         else:

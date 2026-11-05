@@ -310,7 +310,7 @@ private slots:
             if (menu && menu->property("visible").toBool()) setupMenu = menu;
         }
         QVERIFY(setupMenu);
-        QCOMPARE(setupMenu->findChild<QObject *>("appImageSetupHeading")->property("text").toString(), "Confirm the Appimage");
+        QCOMPARE(setupMenu->findChild<QObject *>("appImageSetupHeading")->property("text").toString(), "Confirm the AppImage");
         auto *cancel = setupMenu->findChild<QObject *>("appImageSetupCancel");
         QVERIFY(cancel);
         QVERIFY(QMetaObject::invokeMethod(cancel, "triggered"));

@@ -60,7 +60,7 @@ DockMenu {
 
     DockMenuItem {
         objectName: "appImageSetupHeading"
-        text: qsTr("Confirm the Appimage")
+        text: qsTr("Confirm the AppImage")
         enabled: false
     }
     DockMenuItem {
