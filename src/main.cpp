@@ -74,7 +74,7 @@ int main(int argc, char **argv)
     app.setApplicationName("spacedock");
     app.setDesktopFileName("spacedock");
     app.setOrganizationName("spacedock");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion("0.7.0");
     // Install translators before creating any QML or dialogs. Missing catalogs
     // simply leave the original English strings in place.
     Translations translations;

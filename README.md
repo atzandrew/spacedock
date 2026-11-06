@@ -14,20 +14,27 @@ This tool is in beta and **will** have bugs! Please report them.
 
 ![Spacedock's magnification example](assets/images/spacedock_screenshot2.png)
 
-## Current version Beta 0.5.1 - November 1, 2026
+## Current version Beta 0.7.0 - November 5, 2026
 
-* Initial GitHub upload
+Changes since 0.5.1:
+
+* Folder pinning with fan, list, and grid views, sorting, thumbnails, and drag-out
+* System language support with translations for ten additional languages
+* Improved hover and magnification performance
+* Updated trashcan artwork and menu selection feedback
+* Improved application icon picker behavior
+* Hover benchmarks and fixes for CI builds and tests
 
 ### Features
 
 * A Mac OS X inspired dock with toggleable and tweakable magnification and size
 * Toggleable auto-hide with smooth animations
-* Drag and drop shortcuts
-* Trashcan built into the dock
+* Drag and drop application and folder shortcuts
+* Trashcan built into the dock with drag and drop and empty confirmation
 * Real-time dock scaling
 * Icon label and image customization
 * AppImage handling/workaround
-* Folder fan, list, and grid views with sorting and drag-out
+* Folder fan, list, and grid views with sorting, thumbnails, and drag-out
 * Right-click menus for applications and folders, including application actions and recent files
 * Localization that follows the system language at startup. Translations have only been validated by AI and have not been reviewed by native speakers; corrections are welcome.
 
