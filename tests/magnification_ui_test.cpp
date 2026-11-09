@@ -364,6 +364,12 @@ private slots:
         auto *settings = dock->findChild<QQuickWindow *>("dockSettings");
         QVERIFY(settings);
         QVERIFY(QTest::qWaitForWindowExposed(settings));
+        auto *startup = settings->findChild<QQuickItem *>("startAtLoginSetting");
+        QVERIFY(startup);
+        QVERIFY(!startup->isEnabled()); // Preview fixtures cannot change login startup.
+        auto *lastSetting = settings->findChild<QQuickItem *>("windowClickSetting");
+        QVERIFY(lastSetting);
+        QTRY_VERIFY(lastSetting->mapToScene(QPointF(0, lastSetting->height())).y() <= settings->height());
         auto *slider = settings->findChild<QQuickItem *>("dockSizeSlider");
         QVERIFY(slider);
         auto *handle = qvariant_cast<QQuickItem *>(slider->property("handle"));

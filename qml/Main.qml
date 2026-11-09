@@ -59,7 +59,7 @@ Item {
         surfaceHeight: root.height
         pointerInside: root.pointerInside
         openMenus: root.openMenus
-        taskPressed: root.pressedTask >= 0
+        taskPressed: root.pressedTask >= 0 || touchControl.active
         dragging: root.dragging
         externalDrag: appDrop.containsDrag
         externalCommit: externalDropControl.committing || root.trashConfirmationPending || applicationSettings.iconPickerVisible
@@ -165,6 +165,7 @@ Item {
         }
     }
     readonly property int hoveredIndex: {
+        if (touchControl.usingTouch) return openMenus === 0 ? touchControl.targetIndex : -1
         if (!pointerInside || openMenus > 0 || menuPointerReconcilePending || pressedTask >= 0 || dragging || appDrop.containsDrag || externalDropControl.committing || layoutInput.pointerX < viewport.x || layoutInput.pointerX > viewport.x + viewport.width)
             return -1
         let best = -1
@@ -185,7 +186,7 @@ Item {
     function scheduleTooltip() {
         tooltipDelay.stop()
         tooltipReady = false
-        if (!tooltipSettings.enabled || hoveredIndex < 0) return
+        if (touchControl.usingTouch || !tooltipSettings.enabled || hoveredIndex < 0) return
         if (tooltipSettings.delayMs === 0) tooltipReady = true
         else tooltipDelay.start()
     }
@@ -304,6 +305,7 @@ Item {
             + (feedbackSettings.bounceEnabled ? feedbackSettings.bounceHeight : 0)
             + (tooltipSettings.enabled ? tooltipSettings.height + tooltipSettings.gap + tooltipSettings.margin : 0)) <= height
     readonly property bool magnifying: magnification.enabled && magnificationFits && pointerInside
+        && (!touchControl.usingTouch || (touchControl.active && touchControl.magnificationReady))
     // The resting row (every task plus the trash, no insertion gap). Hovering
     // needs only this layout, so share it rather than solving it three times.
     readonly property var restingLayout: Magnification.layout(tasks.count + 1, layout.iconSize, layout.spacing,
@@ -408,7 +410,7 @@ Item {
     }
 
     function observePointer(position, refresh = false, simulated = false) {
-        if (profileHoverRunning && !simulated) return
+        if (touchControl.usingTouch || (profileHoverRunning && !simulated)) return
         position = presentation.mapFromItem(root, position.x, position.y)
         if (startingUp || shuttingDown || hideRequested || trashConfirmationPending) { pointerInside = false; return }
         if (openMenus > 0) return
@@ -440,6 +442,54 @@ Item {
             menuPointerMotion.stop()
         }
         pointerInside = inside
+    }
+    TouchController { id: touchControl; dock: root }
+    function beginTouch() {
+        pointerCoalescer.stop()
+        menuPointerMotion.stop()
+        tooltipDelay.stop()
+        tooltipReady = false
+        menuPointerReconcilePending = false
+        if (settling) cancelReorder()
+        // A finger at the reveal strip should reveal and hold the dock open.
+        hideRequested = false
+    }
+    function touchIndexAt(windowPosition) {
+        const position = presentation.mapFromItem(root, windowPosition.x, windowPosition.y)
+        let inside = position.y >= shelf.y && position.y <= height
+            && position.x >= shelf.x && position.x <= shelf.x + shelf.width
+        for (const area of currentHoverAreas())
+            inside = inside || (position.x >= area.x && position.x <= area.x + area.width
+                && position.y >= area.y && position.y <= area.y + area.height)
+        if (!inside || position.x < viewport.x || position.x > viewport.x + viewport.width) return -1
+        let best = -1
+        let distance = Infinity
+        for (let i = 0; i < geometry.items.length; ++i) {
+            const item = geometry.items[i]
+            const left = viewport.x + item.x - viewport.contentX
+            if (left + item.size <= viewport.x || left >= viewport.x + viewport.width) continue
+            const next = Math.abs(position.x - left - item.size / 2)
+            if (next < distance) { best = i; distance = next }
+        }
+        return best
+    }
+    function trackTouch(position) {
+        pointerInside = touchIndexAt(position) >= 0
+        if (pointerInside) pointerX = presentation.mapFromItem(root, position.x, position.y).x
+    }
+    function activateTouchTarget(index) {
+        if (index === tasks.count) dockBackend.openTrash()
+        else {
+            const task = tasks.itemAt(index)
+            if (task) task.activateItem()
+        }
+    }
+    function openTouchMenu(index) {
+        if (index === tasks.count) trashMenu.openForTouch()
+        else {
+            const task = tasks.itemAt(index)
+            if (task) task.openTouchContextMenu()
+        }
     }
     NumberAnimation {
         id: menuPointerMotion
@@ -475,6 +525,8 @@ Item {
     HoverHandler {
         id: pointer
         onPointChanged: {
+            if (touchControl.active) return
+            touchControl.usingTouch = false
             if (root.dragging || !hovered) {
                 pointerCoalescer.stop()
                 root.observePointer(point.position)
@@ -484,6 +536,7 @@ Item {
             if (!pointerCoalescer.running) pointerCoalescer.start()
         }
         onHoveredChanged: {
+            if (touchControl.usingTouch) return
             pointerCoalescer.stop()
             root.observePointer(point.position)
         }
@@ -800,7 +853,10 @@ Item {
         function acquireDock() { if (!holdsDock) { holdsDock = true; root.acquireMenuHold() } }
         function releaseDock() { if (holdsDock) { holdsDock = false; root.releaseMenuHold() } }
         function positionAtIcon() { placeAbove(trashMenuAnchor, root.width) }
-        function openForIcon() {
+        function openForIcon() { openWithScale(1) }
+        function openForTouch() { openWithScale(2) }
+        function openWithScale(scale) {
+            menuScale = scale
             acquireDock()
             positionAtIcon()
             open()
@@ -861,7 +917,8 @@ Item {
         id: tooltip
         z: 10
         settings: root.tooltipSettings
-        visible: !root.hideRequested && root.hideOffset === 0 && root.tooltipSettings.enabled && root.tooltipReady && root.hoveredIndex >= 0
+        visible: !root.hideRequested && root.hideOffset === 0 && root.tooltipSettings.enabled
+            && (touchControl.usingTouch ? touchControl.labelsReady : root.tooltipReady) && root.hoveredIndex >= 0
         label: root.hoveredIndex === root.geometry.items.length - 1 ? qsTr("Trash") : root.hoveredTask ? root.hoveredTask.appName : ""
         targetCenter: root.hoveredIndex === root.geometry.items.length - 1
             ? viewport.x + trashIcon.x - viewport.contentX + trashIcon.width / 2

@@ -6,6 +6,10 @@ import QtQuick.Templates as T
 T.Menu {
     id: menu
     property bool shown: true
+    property real menuScale: 1
+    readonly property var menuScreen: parent && parent.Window.window ? parent.Window.window.screen : null
+    readonly property real maximumMenuWidth: menuScreen ? Math.max(1, menuScreen.width - 8) : 10000
+    readonly property real maximumMenuHeight: menuScreen ? Math.max(1, menuScreen.height - 8) : 10000
     property bool showPointer: false
     property Item pointerTarget: null
     property bool nativeWindow: true
@@ -39,17 +43,17 @@ T.Menu {
     }
     // Proportions follow the Snow Leopard/Mavericks dock menu, scaled from
     // Lucida Grande to Inter 15 by cap height.
-    readonly property real pointerHeight: showPointer ? 16 : 0
-    readonly property real pointerHalfWidth: 16
-    readonly property real cornerRadius: 6
+    readonly property real pointerHeight: showPointer ? 16 * menuScale : 0
+    readonly property real pointerHalfWidth: 16 * menuScale
+    readonly property real cornerRadius: 6 * menuScale
     // Like the native menu, the pointer sits near the left corner and the
     // menu extends to the right: tip this far from the left border.
-    readonly property real pointerTipInset: 30
-    readonly property real shadowMargin: 10
+    readonly property real pointerTipInset: 30 * menuScale
+    readonly property real shadowMargin: 10 * menuScale
     // Keep the triangle on the panel while allowing its adjacent corner to
     // tighten, rather than moving the tip away from the target artwork.
-    readonly property real pointerTipX: Math.max(shadowMargin + 1 + pointerHalfWidth,
-        Math.min(width - shadowMargin - 1 - pointerHalfWidth, pointerX))
+    readonly property real pointerTipX: Math.max(shadowMargin + menuScale + pointerHalfWidth,
+        Math.min(width - shadowMargin - menuScale - pointerHalfWidth, pointerX))
     // Wayland popup windows ignore negative insets. Reserve the shadow
     // inside the real window instead of painting beyond its clipped surface.
     topInset: 0
@@ -57,13 +61,15 @@ T.Menu {
     leftInset: 0
     rightInset: 0
     // Size to the widest row, like the native menu.
-    implicitWidth: contentItem.implicitWidth + leftPadding + rightPadding
-    implicitHeight: contentItem.implicitHeight + topPadding + bottomPadding
+    implicitWidth: Math.min(contentItem.implicitWidth + leftPadding + rightPadding,
+        menuScale > 1 ? maximumMenuWidth : Infinity)
+    implicitHeight: Math.min(contentItem.implicitHeight + topPadding + bottomPadding,
+        menuScale > 1 ? maximumMenuHeight : Infinity)
     // Menu-wide breathing room is independent of the blue bar's row inset.
-    topPadding: 8 + shadowMargin
-    bottomPadding: 8 + pointerHeight + shadowMargin
-    leftPadding: 2.5 + shadowMargin
-    rightPadding: 2.5 + shadowMargin
+    topPadding: 8 * menuScale + shadowMargin
+    bottomPadding: 8 * menuScale + pointerHeight + shadowMargin
+    leftPadding: 2.5 * menuScale + shadowMargin
+    rightPadding: 2.5 * menuScale + shadowMargin
     margins: 0
     focus: true
     // Root menus: an invisible item the menu is parented to. On Wayland, Qt
@@ -79,13 +85,13 @@ T.Menu {
         // Clamp in dock coordinates, then convert into the target's coordinates.
         // The border is drawn at shadowMargin + 1 from the popup's edge.
         const center = target.x + target.width / 2
-        const tipX = shadowMargin + 1 + pointerTipInset
+        const tipX = shadowMargin + menuScale + pointerTipInset
         const left = Math.max(4, Math.min(dockWidth - width - 4, center - tipX))
         placement.x = left - target.x
         placement.width = width
         placement.height = target.height
         x = 0
-        y = -height - 5 + shadowMargin
+        y = -height - 5 * menuScale + shadowMargin
     }
     closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
     palette.windowText: "#f5f5f5"
@@ -129,12 +135,14 @@ T.Menu {
             target: menu
             function onPointerXChanged() { panel.requestPaint() }
             function onShowPointerChanged() { panel.requestPaint() }
+            function onMenuScaleChanged() { panel.requestPaint() }
         }
         onPaint: {
             const ctx = getContext("2d")
             ctx.reset()
             const pad = menu.shadowMargin
-            const l = pad + 1, t = pad + 1, r = width - pad - 1, b = height - pad - menu.pointerHeight - 1
+            const unit = menu.menuScale
+            const l = pad + unit, t = pad + unit, r = width - pad - unit, b = height - pad - menu.pointerHeight - unit
             const radius = menu.cornerRadius
             const pointerHalfWidth = menu.pointerHalfWidth
             const tip = menu.pointerTipX
@@ -150,7 +158,7 @@ T.Menu {
             ctx.quadraticCurveTo(r, b, r - bottomRightRadius, b)
             if (menu.showPointer) {
                 ctx.lineTo(tip + pointerHalfWidth, b)
-                ctx.lineTo(tip, height - pad - 1)
+                ctx.lineTo(tip, height - pad - unit)
                 ctx.lineTo(tip - pointerHalfWidth, b)
             }
             ctx.lineTo(l + bottomLeftRadius, b)
@@ -167,7 +175,7 @@ T.Menu {
             const shadowAlphas = [0.04, 0.08, 0.14, 0.24]
             for (let i = 0; i < shadowWidths.length; ++i) {
                 ctx.strokeStyle = "rgba(0, 0, 0, " + shadowAlphas[i] + ")"
-                ctx.lineWidth = shadowWidths[i]
+                ctx.lineWidth = shadowWidths[i] * unit
                 ctx.lineJoin = "round"
                 ctx.stroke()
             }
@@ -179,7 +187,7 @@ T.Menu {
             ctx.fillStyle = "rgba(0, 0, 0, 0.76)"
             ctx.fill()
             ctx.strokeStyle = "rgba(255, 255, 255, 0.4)"
-            ctx.lineWidth = 2
+            ctx.lineWidth = 2 * unit
             ctx.stroke()
         }
     }

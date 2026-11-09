@@ -17,7 +17,7 @@ spacedock_prefix="$HOME/.local"
 
 sudo apt-get update
 sudo apt-get install \
-    build-essential cmake \
+    build-essential cmake python3 \
     qt6-base-dev qt6-declarative-dev qt6-tools-dev qt6-tools-dev-tools \
     libkf6config-dev libkf6coreaddons-dev libkf6service-dev libkf6widgetsaddons-dev \
     plasma-workspace plasma-desktop qt6-wayland layer-shell-qt \
@@ -26,17 +26,8 @@ sudo apt-get install \
     qml6-module-qtquick-controls qml6-module-qtquick-dialogs \
     qml6-module-qtquick-layouts qml6-module-qtquick-templates qml6-module-qtquick-window
 
-cmake -S "$spacedock_root" -B "$spacedock_build" \
-    -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-cmake --build "$spacedock_build" --parallel 2
-cmake --install "$spacedock_build" --prefix "$spacedock_prefix"
+"$spacedock_root/tools/install.sh" --build-dir "$spacedock_build" --prefix "$spacedock_prefix"
 
-if command -v kbuildsycoca6 >/dev/null; then
-    kbuildsycoca6
-else
-    printf '%s\n' 'KDE service cache tool not found on PATH; refresh the cache or log out and back in before launching.' >&2
-fi
-printf '\nInstalled SpaceDock to %s\n' "$spacedock_prefix"
 case ":$PATH:" in
     *":$spacedock_prefix/bin:"*)
         printf '%s\n' 'Start it from the application menu or run spacedock in a Plasma Wayland session.'

@@ -120,7 +120,7 @@ TaskManager.TasksModel {
     if (filteredTasks && appIdRole >= 0) {
         filteredTasks->setFilterRole(appIdRole);
         filteredTasks->setFilterRegularExpression(QRegularExpression(
-            QStringLiteral("^(?!spacedock(?:\\.desktop)?$)"), QRegularExpression::CaseInsensitiveOption));
+            QStringLiteral("^(?!spacedock(?:-dev)?(?:\\.desktop)?$)"), QRegularExpression::CaseInsensitiveOption));
     }
     // Only seed installed launchers; saved user pins continue to take precedence.
     QStringList defaultPins;

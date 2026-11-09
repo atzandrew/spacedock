@@ -6,6 +6,9 @@ else()
 endif()
 configure_file("@CMAKE_CURRENT_SOURCE_DIR@/data/spacedock.desktop.in"
     "@CMAKE_CURRENT_BINARY_DIR@/spacedock.install.desktop" @ONLY)
+# Always restore our launcher, even if another registration changed it within
+# the filesystem timestamp resolution used by file(INSTALL).
+file(REMOVE "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@CMAKE_INSTALL_DATADIR@/applications/spacedock.desktop")
 file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/@CMAKE_INSTALL_DATADIR@/applications"
     TYPE FILE FILES "@CMAKE_CURRENT_BINARY_DIR@/spacedock.install.desktop"
     RENAME spacedock.desktop)

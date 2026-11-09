@@ -31,12 +31,23 @@ Changes since 0.5.1:
 * Toggleable auto-hide with smooth animations
 * Drag and drop application and folder shortcuts
 * Trashcan built into the dock with drag and drop and empty confirmation
+* Touch release activation, delayed labels and magnification, and long-press menus
 * Real-time dock scaling
 * Icon label and image customization
 * AppImage handling/workaround
 * Folder fan, list, and grid views with sorting, thumbnails, and drag-out
 * Right-click menus for applications and folders, including application actions and recent files
 * Localization that follows the system language at startup. Translations have only been validated by AI and have not been reviewed by native speakers; corrections are welcome.
+
+### Touch controls
+
+Lift your finger to activate the item underneath it. Hold for 0.15 seconds to
+show its label, or 0.3 seconds to magnify the dock. Slide to browse other icons;
+releasing outside the dock cancels. Holding nearly still for 0.75 seconds opens
+the item's context menu and consumes the release. After sliding, holding roughly
+still for another 0.75 seconds opens the menu for the current item. Movement
+beyond the system drag threshold restarts that hold. Touch context menus and their submenus use twice the normal size, with scrolling
+for tall menus. Touch does not rearrange icons.
 
 ### Languages
 
@@ -112,6 +123,55 @@ cmake --install build --prefix "$HOME/.local"
 ```
 
 Start SpaceDock from the application menu or run `~/.local/bin/spacedock` in a terminal on the Plasma Wayland desktop. An ordinary SSH shell does not have the graphical session environment needed to start the dock. You can check the desktop session type with `echo "$XDG_SESSION_TYPE"`; it should print `wayland`.
+
+### Updating, login startup, and removal
+
+After updating your source checkout, install or update the application with:
+
+```sh
+./tools/install.sh
+```
+
+This builds a Release version in `build-install` and replaces the installation
+under `~/.local`. Dependencies must already be installed; Debian users can use
+`./tools/install-debian.sh` for dependencies and installation together. The
+installer installs the current checkout; it does not fetch changes from GitHub.
+Use `--prefix PATH` or `--build-dir PATH` to override either location.
+
+Quit the running dock and launch SpaceDock from the application menu to use an
+update. Installation preserves preferences, pinned items, and your login startup
+choice. In Dock Settings, enable **Start at login** to launch the installed copy
+when signing into Plasma. This control is disabled for development and preview
+runs. An existing startup entry pointing to another installation must first be
+adjusted through Plasma's Autostart settings.
+
+Installed and development docks share a single-instance lock: launching a second
+dock exits without opening another one. Preview and automated UI test windows are
+independent. An older dock started before this protection was added must be quit
+once before using it.
+
+Development runs through `./tools/run-dev.sh` register **SpaceDock (Development)**
+as `spacedock-dev.desktop`, leaving the installed `spacedock.desktop` launcher and
+autostart entry alone. Quit the installed dock before starting a development dock.
+Both use your existing dock preferences. If a previous development run redirected
+the installed launcher, running the installer once restores it.
+
+To uninstall the default installation:
+
+```sh
+~/.local/bin/spacedock-uninstall
+```
+
+Or, from this checkout:
+
+```sh
+python3 tools/uninstall.py --prefix "$HOME/.local"
+```
+
+Uninstall removes application files and a login entry pointing to that
+installation. It retains saved preferences, pins, custom artwork, and development
+launchers. Quit any running dock separately. The installed uninstaller requires
+Python 3.
 
 ### Command-line access
 

@@ -3,10 +3,11 @@ import QtQuick.Templates as T
 
 T.MenuItem {
     id: control
+    readonly property real menuScale: menu && menu.menuScale !== undefined ? menu.menuScale : 1
     // Row pitch and insets follow the native dock menu (see DockMenu.qml).
-    implicitWidth: Math.max(120, leftPadding + label.implicitWidth + rightPadding
-        + (subMenu ? 24 : 0))
-    implicitHeight: 19
+    implicitWidth: Math.max(120 * menuScale, leftPadding + label.implicitWidth + rightPadding
+        + (subMenu ? 24 * menuScale : 0))
+    implicitHeight: 19 * menuScale
     // Explicit show/hide that menus can read before they open; `visible`
     // reports false for every row while the popup is closed.
     property bool shown: true
@@ -25,10 +26,10 @@ T.MenuItem {
     }
     visible: shown
     height: shown ? implicitHeight : 0
-    leftPadding: 25
-    rightPadding: 20
+    leftPadding: 25 * menuScale
+    rightPadding: 20 * menuScale
     font.family: "Inter"
-    font.pixelSize: 14
+    font.pixelSize: 14 * menuScale
     font.weight: Font.DemiBold
     contentItem: Text {
         id: label
@@ -40,17 +41,19 @@ T.MenuItem {
         textFormat: Text.PlainText
     }
     indicator: Text {
-        x: 8; width: 14; height: parent.height
+        x: 8 * control.menuScale; width: 14 * control.menuScale; height: parent.height
         text: control.checked ? "✓" : ""
         color: "white"
-        font.pixelSize: 12
+        font.pixelSize: 12 * control.menuScale
         verticalAlignment: Text.AlignVCenter
     }
     arrow: Canvas {
-        x: parent.width - width - 11
+        x: parent.width - width - 11 * control.menuScale
         y: (parent.height - height) / 2
-        width: 7; height: 9
+        width: 7 * control.menuScale; height: 9 * control.menuScale
         visible: !!control.subMenu
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
         onPaint: {
             const ctx = getContext("2d")
             ctx.reset()
@@ -70,12 +73,12 @@ T.MenuItem {
             enabled: !confirmationBlink.running
             NumberAnimation { duration: tuning.motion.menuHighlightFadeMs; easing.type: Easing.OutQuad }
         }
-        readonly property real selectionHeight: Math.min(height, Math.ceil(label.implicitHeight) + 4)
+        readonly property real selectionHeight: Math.min(height, Math.ceil(label.implicitHeight) + 4 * control.menuScale)
         readonly property real selectionTop: (height - selectionHeight) / 2
         Rectangle {
-            y: parent.selectionTop - 3
+            y: parent.selectionTop - 3 * control.menuScale
             width: parent.width
-            height: 3
+            height: 3 * control.menuScale
             gradient: Gradient {
                 GradientStop { position: 0; color: "#00000000" }
                 GradientStop { position: 1; color: "#90000000" }
@@ -84,7 +87,7 @@ T.MenuItem {
         Rectangle {
             y: parent.selectionTop + parent.selectionHeight
             width: parent.width
-            height: 3
+            height: 3 * control.menuScale
             gradient: Gradient {
                 GradientStop { position: 0; color: "#90000000" }
                 GradientStop { position: 1; color: "#00000000" }

@@ -4,6 +4,8 @@
 #include <QSessionManager>
 #include "tooltipshadow.h"
 #include "tuning.h"
+#include "loginsettings.h"
+#include "singleinstance.h"
 #include "startupenvironment.h"
 #include "submenuplacement.h"
 #include "translations.h"
@@ -72,7 +74,8 @@ int main(int argc, char **argv)
         eventLoopProbe.start();
     }
     app.setApplicationName("spacedock");
-    app.setDesktopFileName("spacedock");
+    const bool development = app.arguments().contains("--development");
+    app.setDesktopFileName(development ? "spacedock-dev" : "spacedock");
     app.setOrganizationName("spacedock");
     app.setApplicationVersion("0.7.0");
     // Install translators before creating any QML or dialogs. Missing catalogs
@@ -87,6 +90,7 @@ int main(int argc, char **argv)
     parser.addOption({"benchmark-hover-period", "Automatic sweep cycle duration in milliseconds (100–60000).", "ms", "4000"});
     parser.addOption({"benchmark-hover-observations", "Hover-path observations per frame (0 uses direct animation; maximum 64).", "count", "0"});
     parser.addVersionOption();
+    parser.addOption({"development", "Use the separate development launcher; disable login startup changes."});
     parser.addOption({"preview", "Use a regular development window instead of layer shell."});
     parser.addOption({"smoke-test", "Load the UI in preview mode and exit automatically."});
     parser.addOption({"tuning", "Path to hot-reloaded tuning.json.", "path"});
@@ -99,6 +103,9 @@ int main(int argc, char **argv)
     parser.addOption({"debug-open-menu", "Open the context menu for task <row> after startup and log its geometry.", "row"});
     parser.process(app);
     const bool checkReorder = parser.isSet("check-reorder");
+    SingleInstance instance;
+    if (!preview && !checkReorder && !instance.acquire()) return instance.failed() ? 1 : 0;
+    LoginSettings loginSettings(!preview && !development);
     DropTrace dropTrace;
     if (parser.isSet("trace-drops")) app.installEventFilter(&dropTrace);
     SubmenuPlacement submenuPlacement;
@@ -109,7 +116,7 @@ int main(int argc, char **argv)
         if (tuningPath.isEmpty()) tuningPath = ":/tuning.json";
     }
     if (!preview && QStandardPaths::locate(QStandardPaths::GenericDataLocation,
-            "applications/spacedock.desktop").isEmpty()) {
+            "applications/" + app.desktopFileName() + ".desktop").isEmpty()) {
         qCritical() << "Dock desktop entry is not registered. Run ./tools/run-dev.sh from the source directory"
                     << "to register the build before connecting to KWin.";
         return 1;
@@ -184,6 +191,7 @@ int main(int argc, char **argv)
     engine.addImageProvider("tooltipshadows", new ToolTipShadows);
     engine.rootContext()->setContextProperty("dockBackend", &backend);
     engine.rootContext()->setContextProperty("tuning", &tuning);
+    engine.rootContext()->setContextProperty("loginSettings", &loginSettings);
     engine.rootContext()->setContextProperty("previewMode", preview);
     engine.load(QUrl(preview ? "qrc:/qml/PreviewWindow.qml" : "qrc:/qml/DockWindow.qml"));
     if (engine.rootObjects().isEmpty()) return 1;

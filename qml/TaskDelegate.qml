@@ -209,15 +209,18 @@ Item {
         onClicked: mouse => {
             if (reordered) return
             if (mouse.button === Qt.RightButton) menu.openForIcon()
-            else {
-                if (dockBackend.folderPath(task.index)) folderView.openForIcon()
-                else {
-                    if (!task.running && !task.active) bounce.triggerLaunch()
-                    dockBackend.activate(task.index, tuning.bringAllWindows)
-                }
-            }
+            else task.activateItem()
         }
     }
+    function activateItem() {
+        if (dockBackend.folderPath(task.index)) folderView.openForIcon()
+        else {
+            if (!task.running && !task.active) bounce.triggerLaunch()
+            dockBackend.activate(task.index, tuning.bringAllWindows)
+        }
+    }
+    function openContextMenu() { menu.openForIcon() }
+    function openTouchContextMenu() { menu.openForTouch() }
     // Keep the native popup's parent-control rectangle equal
     // to the rendered artwork, rather than the full dock surface.
     Item {

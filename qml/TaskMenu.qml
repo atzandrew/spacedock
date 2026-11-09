@@ -15,7 +15,10 @@ DockMenu {
     pointerTarget: anchor
     property var appEntries: []
     property bool isFolder: false
-    function openForIcon() {
+    function openForIcon() { openWithScale(1) }
+    function openForTouch() { openWithScale(2) }
+    function openWithScale(scale) {
+        menuScale = scale
         appEntries = dockBackend.contextEntries(taskItem.index)
         isFolder = !!dockBackend.folderPath(taskItem.index)
         if (isFolder && targetFolderView) targetFolderView.loadPreferences()
@@ -60,6 +63,7 @@ DockMenu {
         onObjectRemoved: (index, object) => taskMenuRoot.removeItem(object)
     }
     DockMenu {
+        menuScale: taskMenuRoot.menuScale
         id: recentMenu
         objectName: "dockRecentMenu"
         title: qsTr("Recent Files")
@@ -76,7 +80,7 @@ DockMenu {
             onObjectRemoved: (index, object) => recentMenu.removeItem(object)
         }
     }
-    DockMenuSeparator {
+    DockMenuSeparator { menuScale: taskMenuRoot.menuScale;
         visible: taskMenuRoot.appEntries.length > 0
         height: visible ? implicitHeight : 0
     }
@@ -98,7 +102,7 @@ DockMenu {
         shown: taskItem.running && !taskMenuRoot.appEntries.some(entry => entry.section === "actions")
         onTriggered: dockBackend.taskAction(taskItem.index, "new")
     }
-    DockMenuSeparator {}
+    DockMenuSeparator { menuScale: taskMenuRoot.menuScale;}
     DockMenuItem {
         text: qsTr("Sort by")
         enabled: false
@@ -139,7 +143,7 @@ DockMenu {
         checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.sortMode === "type"
         onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("sort", "type")
     }
-    DockMenuSeparator { visible: taskMenuRoot.isFolder; height: visible ? implicitHeight : 0 }
+    DockMenuSeparator { menuScale: taskMenuRoot.menuScale; visible: taskMenuRoot.isFolder; height: visible ? implicitHeight : 0 }
     DockMenuItem {
         text: qsTr("View content as")
         enabled: false
@@ -166,11 +170,12 @@ DockMenu {
         checked: !!taskMenuRoot.targetFolderView && taskMenuRoot.targetFolderView.viewMode === "list"
         onTriggered: if (taskMenuRoot.targetFolderView) taskMenuRoot.targetFolderView.setPreference("view", "list")
     }
-    DockMenuSeparator {
+    DockMenuSeparator { menuScale: taskMenuRoot.menuScale;
         visible: taskMenuRoot.isFolder
         height: taskMenuRoot.isFolder ? implicitHeight : 0
     }
     DockMenu {
+        menuScale: taskMenuRoot.menuScale
         objectName: "dockOptionsMenu"
         title: qsTr("Options")
         DockMenuItem {
@@ -193,7 +198,7 @@ DockMenu {
             onTriggered: dock.openSettings()
         }
     }
-    DockMenuSeparator {
+    DockMenuSeparator { menuScale: taskMenuRoot.menuScale;
         visible: taskItem.running
         height: taskItem.running ? implicitHeight : 0
     }

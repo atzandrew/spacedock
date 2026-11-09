@@ -9,12 +9,13 @@ Window {
     objectName: "dockSettings"
     title: qsTr("Dock Settings")
     width: 480
-    height: 450
+    height: Math.max(510, settingsContent.implicitHeight + 48)
     minimumWidth: 380
-    minimumHeight: 300
+    minimumHeight: Math.max(300, settingsContent.implicitHeight + 48)
     color: palette.window
     SystemPalette { id: palette }
     ColumnLayout {
+        id: settingsContent
         anchors.fill: parent
         anchors.margins: 24
         spacing: 16
@@ -133,6 +134,23 @@ Window {
             ComboBox { enabled: false; model: [qsTr("Bottom")]; Layout.fillWidth: true }
             Label { text: qsTr("Recent applications"); enabled: false }
             CheckBox { text: qsTr("Show recent applications in Dock"); enabled: false }
+            Label { text: qsTr("Startup") }
+            ColumnLayout {
+                CheckBox {
+                    objectName: "startAtLoginSetting"
+                    text: qsTr("Start at login")
+                    enabled: typeof loginSettings !== "undefined" && loginSettings.available
+                    checked: typeof loginSettings !== "undefined" && loginSettings.enabled
+                    onClicked: loginSettings.setEnabled(checked)
+                }
+                Label {
+                    visible: typeof loginSettings !== "undefined" && loginSettings.error.length > 0
+                    text: typeof loginSettings !== "undefined" ? loginSettings.error : ""
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    color: "#c03030"
+                }
+            }
             Label { text: qsTr("Auto-hide") }
             CheckBox {
                 objectName: "autoHideSetting"

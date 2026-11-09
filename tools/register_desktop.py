@@ -20,6 +20,9 @@ def executable_field(path):
 def install_entry(source, binary, destination):
     lines = source.read_text().splitlines()
     lines = [executable_field(binary) if line.startswith('Exec=') else line for line in lines]
+    if destination.stem == 'spacedock-dev':
+        lines = [line + ' --development' if line.startswith('Exec=') else
+                 'Name=SpaceDock (Development)' if line.startswith('Name=') else line for line in lines]
     text = '\n'.join(lines) + '\n'
     destination.parent.mkdir(parents=True, exist_ok=True)
     # Update just our named entry, and never follow an existing target symlink.
@@ -41,18 +44,20 @@ def main():
     args = parser.parse_args()
     build = args.build_dir.resolve()
     data_home = args.data_home or Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local/share')
-    entries = [('spacedock', 'spacedock'), ('spacedock-launch-test', 'spacedock-launch-test')]
-    for desktop, binary in entries:
-        if not (build / binary).is_file() or not (build / (desktop + '.desktop')).is_file():
+    entries = [('spacedock-dev', 'spacedock', 'spacedock'),
+               ('spacedock-launch-test', 'spacedock-launch-test', 'spacedock-launch-test')]
+    for desktop, binary, source in entries:
+        if not (build / binary).is_file() or not (build / (source + '.desktop')).is_file():
             parser.error(f'Build the project first: missing {desktop} or {binary} in {build}')
     refresh = shutil.which('kbuildsycoca6')
     if not args.dry_run and not refresh:
         parser.error('kbuildsycoca6 is required to refresh KDE application registration')
-    for desktop, binary in entries:
+    for desktop, binary, source in entries:
         destination = data_home / 'applications' / (desktop + '.desktop')
-        print(f'{destination}: {executable_field(build / binary)}')
+        arguments = ' --development' if desktop == 'spacedock-dev' else ''
+        print(f'{destination}: {executable_field(build / binary)}{arguments}')
         if not args.dry_run:
-            install_entry(build / (desktop + '.desktop'), build / binary, destination)
+            install_entry(build / (source + '.desktop'), build / binary, destination)
     if not args.dry_run:
         environment = os.environ.copy()
         environment['XDG_DATA_HOME'] = str(data_home)

@@ -8,11 +8,11 @@ find_package(KF6CoreAddons 6.0 REQUIRED)
 find_package(KF6Service 6.0 REQUIRED)
 find_package(KF6WidgetsAddons 6.0 REQUIRED)
 qt_standard_project_setup()
-qt_add_executable(spacedock src/folderservices.cpp src/folderservices.h src/trashcontroller.cpp src/trashcontroller.h src/imagepicker.cpp src/imagepicker.h src/docklifecycle.cpp src/docklifecycle.h src/main.cpp src/dockbackend.cpp src/dockbackend.h src/appimagestore.cpp src/appimagestore.h src/appimagecontroller.cpp src/appimagecontroller.h src/tooltipshadow.cpp src/tooltipshadow.h src/tuning.cpp src/tuning.h src/submenuplacement.h)
+qt_add_executable(spacedock src/loginsettings.h src/singleinstance.h src/folderservices.cpp src/folderservices.h src/trashcontroller.cpp src/trashcontroller.h src/imagepicker.cpp src/imagepicker.h src/docklifecycle.cpp src/docklifecycle.h src/main.cpp src/dockbackend.cpp src/dockbackend.h src/appimagestore.cpp src/appimagestore.h src/appimagecontroller.cpp src/appimagecontroller.h src/tooltipshadow.cpp src/tooltipshadow.h src/tuning.cpp src/tuning.h src/submenuplacement.h)
 target_link_libraries(spacedock PRIVATE Qt6::Quick Qt6::DBus Qt6::Widgets Qt6::Concurrent KF6::ConfigCore KF6::CoreAddons KF6::Service KF6::WidgetsAddons)
 set(DOCK_UI_RESOURCES
     qml/Main.qml qml/DockSettings.qml qml/ApplicationSettings.qml
-    qml/AutoHideController.qml qml/ExternalDropController.qml qml/DragController.qml
+    qml/AutoHideController.qml qml/TouchController.qml qml/ExternalDropController.qml qml/DragController.qml
     qml/AppImageSetupMenu.qml qml/TaskArtwork.qml qml/AppImageArtworkTransition.qml
     qml/TaskMenu.qml qml/TaskDelegate.qml qml/FolderView.qml qml/TrashItem.qml qml/DockMenu.qml qml/DockMenuItem.qml
     qml/DockMenuSeparator.qml qml/DockToolTip.qml qml/Bounce.qml qml/Magnification.js
@@ -63,11 +63,19 @@ include(GNUInstallDirs)
 configure_file(cmake/InstallDesktop.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/InstallDesktop.cmake @ONLY)
 install(SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/InstallDesktop.cmake)
 install(TARGETS spacedock RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+configure_file(tools/uninstall.py ${CMAKE_CURRENT_BINARY_DIR}/spacedock-uninstall @ONLY)
+install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/spacedock-uninstall DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES tuning.json DESTINATION ${CMAKE_INSTALL_DATADIR}/spacedock)
 install(FILES assets/MANIFEST.csv DESTINATION ${CMAKE_INSTALL_DATADIR}/spacedock/assets)
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     find_package(Qt6 REQUIRED COMPONENTS Test)
+    qt_add_executable(installation-test tests/installation_test.cpp src/loginsettings.h src/singleinstance.h)
+    target_include_directories(installation-test PRIVATE src)
+    target_link_libraries(installation-test PRIVATE Qt6::Test)
+    add_test(NAME installation COMMAND installation-test)
+    add_test(NAME install-update-remove COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_installation.py ${CMAKE_CURRENT_BINARY_DIR})
+    add_test(NAME uninstall COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_uninstall.py ${CMAKE_SOURCE_DIR}/tools/uninstall.py)
     find_package(Qt6 QUIET COMPONENTS LinguistTools)
     if(TARGET Qt6::lrelease)
         qt_add_executable(translation-test tests/translation_test.cpp src/translations.h)
@@ -131,6 +139,7 @@ if(BUILD_TESTING)
     # shared 45-second limit even when every assertion succeeds.
     set_tests_properties(magnification-ui PROPERTIES TIMEOUT 120)
     add_dock_ui_test(appimage-integration-test tests/appimage_integration_test.cpp appimage-integration)
+    add_dock_ui_test(touch-ui-test tests/touch_ui_test.cpp touch-ui)
     add_dock_ui_test(artwork-ui-test tests/artwork_ui_test.cpp artwork-ui)
     add_dock_ui_test(dockbackend-test tests/dockbackend_test.cpp dock-backend)
     add_test(NAME asset-policy COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_assets.py --root ${CMAKE_SOURCE_DIR})

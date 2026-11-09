@@ -18,16 +18,19 @@ with tempfile.TemporaryDirectory(prefix='spacedock registration ') as temporary:
     result = subprocess.run(command + ['--dry-run'], env=environment, capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stderr
     assert not data.exists(), 'Dry run modified the registration directory'
+    installed = data / 'applications/spacedock.desktop'
+    installed.parent.mkdir(parents=True)
+    installed.write_text('installed launcher sentinel')
     result = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
-    for desktop, binary in [('spacedock', 'spacedock'),
+    for desktop, binary in [('spacedock-dev', 'spacedock'),
                             ('spacedock-launch-test', 'spacedock-launch-test')]:
         entry = configparser.ConfigParser(interpolation=None)
         entry.optionxform = str
         entry.read(data / 'applications' / (desktop + '.desktop'))
         settings = entry['Desktop Entry']
-        assert settings['Exec'] == f'"{(build / binary).resolve()}"'
-        if desktop == 'spacedock':
+        assert settings['Exec'] == f'"{(build / binary).resolve()}"' + (' --development' if desktop == 'spacedock-dev' else '')
+        if desktop == 'spacedock-dev':
             assert settings['Comment[fr]'] == 'Un dock de style classique pour Plasma Wayland'
             for locale in ('de', 'es', 'it', 'ja', 'pl', 'pt_BR', 'ru', 'uk', 'zh_CN'):
                 assert settings[f'Comment[{locale}]'], f'Missing desktop translation: {locale}'
@@ -35,6 +38,7 @@ with tempfile.TemporaryDirectory(prefix='spacedock registration ') as temporary:
                 'org_kde_plasma_window_management', 'org_kde_plasma_activation_feedback'}
         else:
             assert settings['StartupNotify'] == 'true'
+    assert installed.read_text() == 'installed launcher sentinel', 'Development registration replaced installed launcher'
     assert list((root / 'cache').glob('ksycoca6*')), 'KDE service cache was not generated'
     # The one-step development runner must register first, then exec the real
     # binary with its supplied arguments. Keep all registrations/cache isolated.
