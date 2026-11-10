@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
+import QtQuick.Controls.Fusion as Fusion
 import QtQuick.Layouts
 
 Window {
@@ -29,7 +30,9 @@ Window {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 0
-                Slider {
+                // KDE's desktop-style sliders can stick at the minimum (reported
+                // with Qt 6.12 / qqc2-desktop-style 6.31). Use Fusion locally.
+                Fusion.Slider {
                     id: sizeSlider
                     objectName: "dockSizeSlider"
                     Layout.fillWidth: true
@@ -99,7 +102,7 @@ Window {
                     enabled: tuning.magnification.enabled
                     font.pixelSize: 11
                 }
-                Slider {
+                Fusion.Slider {
                     id: magnificationSlider
                     objectName: "magnificationScaleSlider"
                     Layout.fillWidth: true

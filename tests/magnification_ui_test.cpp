@@ -397,6 +397,32 @@ private slots:
         QTest::mouseClick(settings, Qt::LeftButton, Qt::NoModifier, scaleEnd);
         QTRY_VERIFY(tuning.magnificationScale() > 3.8);
         QCOMPARE(tuning.magnification().value("scaleSamples").toList().first().toDouble(), tuning.magnificationScale());
+
+        // Both controls must recover from their minimum with native touch input,
+        // including live updates while held and the final value after release.
+        auto *device = QTest::createTouchDevice();
+        for (auto *control : {slider, scaleSlider}) {
+            const bool sizeControl = control == slider;
+            if (sizeControl) tuning.setSize(18);
+            else tuning.setMagnificationScale(1);
+            const auto currentValue = [&] {
+                return sizeControl ? tuning.size() : tuning.magnificationScale();
+            };
+            const double minimum = control->property("from").toDouble();
+            QTRY_COMPARE(control->property("value").toDouble(), minimum);
+            const auto left = control->mapToScene(QPointF(8, control->height() / 2)).toPoint();
+            const auto right = control->mapToScene(QPointF(control->width() - 8, control->height() / 2)).toPoint();
+            auto events = QTest::touchEvent(settings, device, false);
+            events.press(0, left, settings).commit();
+            QTRY_VERIFY(control->property("pressed").toBool());
+            events.move(0, (left + right) / 2, settings).commit();
+            QTest::qWait(20); // Deliver this frame before Qt compresses the next move.
+            events.move(0, right, settings).commit();
+            QTRY_VERIFY(currentValue() > (sizeControl ? 100 : 3.8));
+            events.release(0, right, settings).commit();
+            QTRY_VERIFY(!control->property("pressed").toBool());
+            QVERIFY(currentValue() > (sizeControl ? 100 : 3.8));
+        }
         delete engine.rootObjects().first();
     }
     void externalApplicationDrops() {
