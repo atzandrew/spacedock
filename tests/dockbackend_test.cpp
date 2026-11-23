@@ -289,12 +289,25 @@ private slots:
         QCOMPARE(about.count(), 1);
         revision.clear();
         QSignalSpy data(&backend, &QAbstractItemModel::dataChanged);
+        auto frontendChanged = [&](int role) {
+            for (const auto &event : data)
+                if (event.at(2).value<QList<int>>().contains(role)) return true;
+            return false;
+        };
+        // Window titles change constantly; they refresh names, not artwork.
         newSource.item(0)->setText("updated");
+        QCOMPARE(revision.count(), 0);
+        QVERIFY(frontendChanged(DockBackend::AppKey));
+        QVERIFY(frontendChanged(DockBackend::Name));
+        data.clear();
+        // Roles the dock does not show (geometry, stacking, ...) are ignored.
+        newSource.item(0)->setData(42, Qt::UserRole + 500);
+        QCOMPARE(revision.count(), 0);
+        QVERIFY(!frontendChanged(DockBackend::Name));
+        QVERIFY(!frontendChanged(Qt::DecorationRole));
+        newSource.item(0)->setData(QIcon(":/assets/icons/appimage_open.png"), Qt::DecorationRole);
         QCOMPARE(revision.count(), 1);
-        bool frontendRoles = false;
-        for (const auto &event : data)
-            frontendRoles |= event.at(2).value<QList<int>>().contains(DockBackend::AppKey);
-        QVERIFY(frontendRoles);
+        QVERIFY(frontendChanged(Qt::DecorationRole));
         newSource.removeRow(0);
         QCOMPARE(structure.count(), 2);
         newSource.clear();

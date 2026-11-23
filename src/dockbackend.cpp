@@ -185,16 +185,37 @@ void DockBackend::setSourceModel(QAbstractItemModel *tasks)
     m_sourceConnections.clear();
     emit taskStructureAboutToChange();
     QIdentityProxyModel::setSourceModel(tasks);
+    refreshSourceRoles();
     if (tasks) {
-        auto invalidate = [this] { invalidateSource(); };
         m_sourceConnections.append(connect(tasks, &QAbstractItemModel::dataChanged, this,
-            [this, invalidate](const QModelIndex &first, const QModelIndex &last) {
-                invalidate();
+            [this](const QModelIndex &first, const QModelIndex &last, const QList<int> &sourceRoles) {
                 // Upstream role numbers differ from the stable frontend roles.
-                emit dataChanged(mapFromSource(first), mapFromSource(last), {Name, Running, Pinned, Launching, Attention, Active, AppKey, NeedsAppImageSetup});
+                static const QList<int> allRoles {Name, Running, Pinned, Launching, Attention, Active,
+                    AppKey, NeedsAppImageSetup, Qt::DecorationRole};
+                QList<int> changed;
+                bool artwork = sourceRoles.isEmpty();
+                bool reconcile = sourceRoles.isEmpty();
+                if (sourceRoles.isEmpty()) changed = allRoles;
+                for (const int role : sourceRoles) {
+                    const auto effect = m_sourceRoleEffects.constFind(role);
+                    if (effect == m_sourceRoleEffects.cend()) continue;
+                    for (const int frontend : effect->roles)
+                        if (!changed.contains(frontend)) changed.append(frontend);
+                    artwork |= effect->artwork;
+                    reconcile |= effect->tasks;
+                }
+                if (changed.isEmpty()) return;
+                // Icon URLs carry the revision; bumping it reloads every icon.
+                if (artwork) invalidateSource();
+                else {
+                    traceTasks();
+                    if (reconcile || (changed.contains(Name) && m_appImages.pending())) scheduleTaskReconcile();
+                }
+                emit dataChanged(mapFromSource(first), mapFromSource(last), changed);
             }));
-        auto structureChanged = [this, invalidate] {
-            invalidate();
+        auto structureChanged = [this] {
+            refreshSourceRoles();
+            invalidateSource();
             emit taskStructureChanged();
         };
         m_sourceConnections.append(connect(tasks, &QAbstractItemModel::rowsInserted, this, structureChanged));
@@ -217,6 +238,11 @@ void DockBackend::invalidateSource()
     ++m_revision;
     emit revisionChanged();
     traceTasks();
+    scheduleTaskReconcile();
+}
+
+void DockBackend::scheduleTaskReconcile()
+{
     if (!m_sampleTasks && !m_iconCachePending) {
         m_iconCachePending = true;
         QTimer::singleShot(0, this, [this] {
@@ -235,12 +261,46 @@ QHash<int, QByteArray> DockBackend::roleNames() const
         {NeedsAppImageSetup, "needsAppImageSetup"}};
 }
 
+void DockBackend::refreshSourceRoles()
+{
+    m_sourceRoles.clear();
+    m_sourceRoleEffects.clear();
+    if (!sourceModel()) return;
+    const auto names = sourceModel()->roleNames();
+    for (auto it = names.cbegin(); it != names.cend(); ++it) m_sourceRoles.insert(it.value(), it.key());
+    // Artwork roles also feed the icon cache identity; task roles feed
+    // AppImage reconciliation and icon caching. Unlisted roles (geometry,
+    // stacking, virtual desktops, ...) are not shown by the dock.
+    const struct { const char *name; QList<int> roles; bool artwork; bool tasks; } effects[] {
+        {"display", {Name, AppKey}, false, false},
+        {"decoration", {Qt::DecorationRole}, true, true},
+        {"AppId", {Name, AppKey}, true, true},
+        {"AppName", {Name, AppKey}, true, true},
+        {"LauncherUrl", {}, true, true},
+        {"LauncherUrlWithoutIcon", {Name, AppKey, NeedsAppImageSetup}, true, true},
+        {"IsWindow", {Running}, false, true},
+        {"IsGroupParent", {Running}, false, true},
+        {"HasLauncher", {Pinned}, false, true},
+        {"IsStartup", {Launching}, false, true},
+        {"IsDemandingAttention", {Attention}, false, false},
+        {"IsActive", {Active}, false, false},
+        {"AppPid", {}, false, true},
+    };
+    for (const auto &effect : effects) {
+        const int role = m_sourceRoles.value(effect.name, -1);
+        if (role < 0) continue;
+        auto &entry = m_sourceRoleEffects[role];
+        entry.roles = effect.roles.isEmpty() ? QList<int>{Qt::DecorationRole} : effect.roles;
+        entry.artwork = effect.artwork;
+        entry.tasks = effect.tasks;
+    }
+}
+
 QVariant DockBackend::taskData(const QModelIndex &idx, const QByteArray &name) const
 {
-    const auto roles = sourceModel()->roleNames();
-    for (auto it = roles.begin(); it != roles.end(); ++it)
-        if (it.value() == name) return sourceModel()->data(mapToSource(idx), it.key());
-    return {};
+    // Plasma's task model rebuilds its role-name hash on every call.
+    const int role = m_sourceRoles.value(name, -1);
+    return role < 0 ? QVariant() : sourceModel()->data(mapToSource(idx), role);
 }
 
 QVariant DockBackend::data(const QModelIndex &idx, int role) const

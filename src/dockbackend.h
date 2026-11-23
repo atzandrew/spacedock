@@ -119,7 +119,15 @@ private:
     TrashController m_trash;
     ImagePicker m_imagePicker;
     void invalidateSource();
+    void scheduleTaskReconcile();
+    void refreshSourceRoles();
     QList<QMetaObject::Connection> m_sourceConnections;
+    // Source role numbers by name, and which frontend roles/work each one
+    // feeds. Busy windows change title, geometry and stacking constantly;
+    // those must not invalidate artwork or rerun task reconciliation.
+    struct SourceRoleEffect { QList<int> roles; bool artwork = false; bool tasks = false; };
+    QHash<QByteArray, int> m_sourceRoles;
+    QHash<int, SourceRoleEffect> m_sourceRoleEffects;
     bool m_traceDrag = false;
     bool needsAppImageSetup(const QModelIndex &index) const;
     bool m_iconCachePending = false;
