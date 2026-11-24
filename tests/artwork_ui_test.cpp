@@ -1,5 +1,7 @@
 #include "dockbackend.h"
 #include "tooltipshadow.h"
+#include <QMutex>
+#include <QSet>
 #include "tuning.h"
 #include "ui_test_support.h"
 #include <QQmlApplicationEngine>
@@ -332,6 +334,56 @@ Item {
         QTest::addColumn<double>("completionPhase");
         QTest::newRow("ready while rising") << 0.25;
         QTest::newRow("ready while falling") << 0.75;
+    }
+    void tooltipShadowsRequestOnlySettledLabels() {
+        // Counts distinct shadow rasters; each one is a blur on the loader thread.
+        struct CountingShadows : ToolTipShadows {
+            QMutex mutex;
+            QSet<QString> ids;
+            QImage requestImage(const QString &id, QSize *size, const QSize &requested) override {
+                { QMutexLocker lock(&mutex); ids.insert(id); }
+                return ToolTipShadows::requestImage(id, size, requested);
+            }
+        };
+        Tuning tuning(":/tuning.json");
+        QQmlApplicationEngine engine;
+        DockBackend backend(&engine, true);
+        QVERIFY(backend.isReady());
+        auto *shadows = new CountingShadows;
+        engine.addImageProvider("tasks", new TaskIcons(&backend));
+        engine.addImageProvider("folderthumbnails", new FolderThumbnails);
+        engine.addImageProvider("tooltipshadows", shadows);
+        engine.rootContext()->setContextProperty("dockBackend", &backend);
+        engine.rootContext()->setContextProperty("tuning", &tuning);
+        engine.rootContext()->setContextProperty("previewMode", false);
+        engine.load(QUrl("qrc:/qml/PreviewWindow.qml"));
+        QVERIFY(!engine.rootObjects().isEmpty());
+        auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+        auto *content = window->findChild<QQuickItem *>("dockContent");
+        QVERIFY(content);
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+        QTRY_VERIFY(!content->property("startingUp").toBool());
+        QTRY_COMPARE(taskItems(content).size(), 13);
+        auto *tooltip = content->findChild<QQuickItem *>("dockToolTip");
+        QVERIFY(tooltip);
+        const auto icons = taskItems(content);
+        const int y = qRound(icons[0]->mapToScene(QPointF(0, icons[0]->height() / 2)).y());
+        const int left = qRound(icons.first()->mapToScene(QPointF(icons.first()->width() / 2, 0)).x());
+        const int right = qRound(icons.last()->mapToScene(QPointF(icons.last()->width() / 2, 0)).x());
+        QSet<QString> labels;
+        for (int pass = 0; pass < 2; ++pass) {
+            for (int step = 0; step <= 60; ++step) {
+                const int x = pass ? right - (right - left) * step / 60 : left + (right - left) * step / 60;
+                QTest::mouseMove(window, QPoint(x, y));
+                QTest::qWait(16);
+                if (tooltip->isVisible()) labels.insert(tooltip->property("label").toString());
+            }
+        }
+        QTest::qWait(100);
+        QVERIFY(labels.size() > 3);
+        QMutexLocker lock(&shadows->mutex);
+        QVERIFY2(shadows->ids.size() <= labels.size(),
+            qPrintable(QString("%1 shadow rasters for %2 labels").arg(shadows->ids.size()).arg(labels.size())));
     }
     void taskReplacementPreservesBounce() {
         QFETCH(double, completionPhase);

@@ -16,19 +16,35 @@ Item {
     // Raster shadows are cached by text/style/size, independently of position.
     // Both hardware and software renderers only composite the resulting image.
     FontMetrics { id: metrics; font: caption.font }
+    // Label, width and elision settle in separate binding steps. Request the
+    // shadow once they have settled, and only while shown: each intermediate
+    // combination missed the cache and blurred a new raster on the loader
+    // thread for every icon the pointer crossed.
+    readonly property string shadowSpec: visible && label !== "" ? JSON.stringify({
+        text: metrics.elidedText(tooltip.label, Qt.ElideRight, caption.width),
+        width: width, height: height, dpr: Screen.devicePixelRatio,
+        family: caption.font.family, fontSize: caption.font.pixelSize,
+        weight: caption.font.weight, baseline: caption.y + caption.baselineOffset,
+        blur: tooltip.settings.shadowBlur, coreBlur: tooltip.settings.shadowCoreBlur,
+        offset: tooltip.settings.shadowOffset, strength: tooltip.settings.shadowStrength,
+        sourceScale: tooltip.settings.shadowSourceScale
+    }) : ""
+    property string shadowSource: ""
+    property bool shadowUpdatePending: false
+    onShadowSpecChanged: {
+        if (shadowUpdatePending) return
+        shadowUpdatePending = true
+        Qt.callLater(updateShadow)
+    }
+    function updateShadow() {
+        shadowUpdatePending = false
+        shadowSource = shadowSpec ? "image://tooltipshadows/" + encodeURIComponent(shadowSpec) : ""
+    }
     Image {
         id: shadow
         anchors.fill: parent
         asynchronous: true
-        source: "image://tooltipshadows/" + encodeURIComponent(JSON.stringify({
-            text: metrics.elidedText(tooltip.label, Qt.ElideRight, caption.width),
-            width: width, height: height, dpr: Screen.devicePixelRatio,
-            family: caption.font.family, fontSize: caption.font.pixelSize,
-            weight: caption.font.weight, baseline: caption.y + caption.baselineOffset,
-            blur: tooltip.settings.shadowBlur, coreBlur: tooltip.settings.shadowCoreBlur,
-            offset: tooltip.settings.shadowOffset, strength: tooltip.settings.shadowStrength,
-            sourceScale: tooltip.settings.shadowSourceScale
-        }))
+        source: tooltip.shadowSource
     }
     Text {
         id: caption

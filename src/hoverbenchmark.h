@@ -5,6 +5,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QTimer>
 #include <QEvent>
 #include <QMouseEvent>
@@ -121,8 +122,8 @@ inline void startHoverBenchmark(QQuickWindow *window, QObject *content, bool aut
     connections->push_back(QObject::connect(window, &QQuickWindow::beforeFrameBegin, window, [stage] { stage(0); }, Qt::DirectConnection));
     connections->push_back(QObject::connect(window, &QQuickWindow::beforeSynchronizing, window, [stage, mark] { stage(1); mark('S'); }, Qt::DirectConnection));
     connections->push_back(QObject::connect(window, &QQuickWindow::afterSynchronizing, window, [stage, mark] { stage(2); mark('s'); }, Qt::DirectConnection));
-    connections->push_back(QObject::connect(window, &QQuickWindow::beforeRendering, window, [stage] { stage(3); }, Qt::DirectConnection));
-    connections->push_back(QObject::connect(window, &QQuickWindow::afterRendering, window, [stage] { stage(4); }, Qt::DirectConnection));
+    connections->push_back(QObject::connect(window, &QQuickWindow::beforeRendering, window, [stage, mark] { stage(3); mark('R'); }, Qt::DirectConnection));
+    connections->push_back(QObject::connect(window, &QQuickWindow::afterRendering, window, [stage, mark] { stage(4); mark('r'); }, Qt::DirectConnection));
     connections->push_back(QObject::connect(window, &QQuickWindow::frameSwapped, window, [stage] { stage(5); }, Qt::DirectConnection));
     const auto connection = QObject::connect(window, &QQuickWindow::frameSwapped, window, [samples] {
         QMutexLocker lock(&samples->mutex);
@@ -149,6 +150,16 @@ inline void startHoverBenchmark(QQuickWindow *window, QObject *content, bool aut
             return;
         }
         if (automatic) content->setProperty("profileHoverRunning", true);
+        // Resting icon row in window coordinates, for aiming replayed input.
+        // The production surface spans the screen, so these are screen coordinates.
+        const auto layout = content->property("layout").toMap();
+        const double iconSize = layout.value("iconSize").toDouble();
+        const double rowWidth = content->property("edgeWidth").toDouble();
+        const double surfaceWidth = content->property("width").toDouble();
+        qInfo().nospace() << "hover-benchmark: geometry surface " << surfaceWidth << "x" << content->property("height").toDouble()
+                          << " row-left " << (surfaceWidth - rowWidth) / 2 << " row-width " << rowWidth
+                          << " icon-bottom " << content->property("iconBottom").toDouble() << " icon-size " << iconSize
+                          << " refresh-hz " << (window->screen() ? window->screen()->refreshRate() : 60.0);
         QTimer::singleShot(2000, content, [=] {
             {
                 QMutexLocker lock(&samples->mutex);

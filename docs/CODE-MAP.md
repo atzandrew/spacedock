@@ -89,7 +89,7 @@ warning and the last good settings are kept. Validation and defaults:
 | File | Owns |
 |---|---|
 | `main.cpp` | Startup, command-line flags (`--preview`, `--tuning`, `--trace-*`, `--debug-open-menu`, ...), engine setup. |
-| `hoverbenchmark.h` | Opt-in `--benchmark-hover`/`--benchmark-pointer` workload startup, buffered Qt swap timing, and the optional `SPACEDOCK_BENCHMARK_TRACE` event timeline (`benchmarkTraceHook`, also called from `DockBackend`); simulated pointer sweep in `Main.qml`. |
+| `hoverbenchmark.h` | Opt-in `--benchmark-hover`/`--benchmark-pointer` workload startup, buffered Qt swap timing, the icon-row geometry report used to aim replays, and the optional `SPACEDOCK_BENCHMARK_TRACE` event timeline (`benchmarkTraceHook`, also called from `DockBackend`); simulated pointer sweep in `Main.qml`. Driven by `tools/profile-hover.py`. |
 | `translations/spacedock.ts` | Translation source template; see `translations/README.md` for adding catalogs. |
 | `submenuplacement.h` | Tells KWin where submenus open: grow up from the row's bottom-right corner. Qt ignores `Menu.x/y` on Wayland. |
 | `dockbackend.h/.cpp` | The only code that talks to Plasma's private task manager: task model, activate, pin/unpin, reorder, context menu entries, URL drops, native drag, cursor position, input region. |
@@ -129,6 +129,8 @@ warning and the last good settings are kept. Validation and defaults:
 | `tools/install.sh`, `tools/install-debian.sh` | Build/install updates to a stable prefix; Debian wrapper also installs dependencies. |
 | `tools/uninstall.py` | Remove known installed files and matching autostart entry, retaining user settings; installed as `spacedock-uninstall`. |
 | `tools/replay-pointer.cpp` | Standalone Linux uinput mouse-motion replay for repeatable native-input profiling; requires `/dev/uinput` access. |
+| `tools/profile-hover.py` | One-command hover profile: stops the running dock, sweeps a virtual mouse over the icon row (optionally under `--cpu-load`), records a frame trace and restarts the dock. Reports frame timing, per-thread CPU and slow-frame causes; `--qml-profile` adds QML hot spots. |
+| `tools/analyze-hover-trace.py` | Explains a `SPACEDOCK_BENCHMARK_TRACE` file: per-frame phases (wait, animate, polish, sync, render, swap) and the cause of each slow frame. |
 | `tools/register_desktop.py` | Desktop-entry registration used by `run-dev.sh`. |
 | `tools/check_assets.py`, `tools/reference-sha256.txt` | Keep private reference material out of the repo. |
 | `tools/compare_clips.py` | Side-by-side comparison of reference and dock recordings. |
